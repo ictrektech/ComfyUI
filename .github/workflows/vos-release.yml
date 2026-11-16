@@ -1,0 +1,114 @@
+name: VOS ComfyUI Pull Package Release
+on:
+  push:
+    tags: ['vos-comfyui-v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Resolve version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#vos-comfyui-v}"
+          python3 ictrek.app/scripts/vos_version.py check "$VERSION"
+          [[ "$(tr -d '[:space:]' < ictrek.app/VERSION)" == "$VERSION" ]]
+          echo "COMFYUI_SOURCE_REVISION=$(git rev-parse --short=12 HEAD^)" >> "$GITHUB_ENV"
+          echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "COMFYUI_PACKAGE_DIR=$HOME/dev/build/ComfyUI/ictrek.app" >> "$GITHUB_ENV"
+      - name: Write Feishu credentials
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path.home() / '.feishu.components.json'
+          path.touch(mode=0o600)
+          path.write_text(json.dumps({'feishu_app_id': os.environ['FEISHU_APP_ID'], 'feishu_app_secret': os.environ['FEISHU_APP_SECRET']}))
+          PY
+      - name: Verify and build pull package from published image records
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$HOME/dev/build/ComfyUI/tmp"
+          export TMPDIR="$HOME/dev/build/ComfyUI/tmp" PYTHONDONTWRITEBYTECODE=1
+          python3 -m pip install --cache-dir "$HOME/dev/build/ComfyUI/pip" pyyaml
+          python3 -m unittest discover -s ictrek.app/scripts -p 'test_vos_package.py'
+          bash ictrek.app/scripts/package.sh
+      - name: Create release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PREVIOUS="$(gh release list --limit 100 --json tagName,publishedAt --jq 'map(select(.tagName | test("-vos\\.[0-9]+$"))) | sort_by(.publishedAt) | reverse | .[0].tagName // ""')"
+          {
+            echo 'VOS ComfyUI pull package. Service images are recorded in the canonical Feishu spreadsheet.'
+            echo
+            if [[ -n "$PREVIOUS" ]]; then
+              echo "Changes since ${PREVIOUS}:"
+              git log --no-merges --pretty='- %s (%h)' "${PREVIOUS}..HEAD"
+            else
+              echo 'Initial VOS package release.'
+            fi
+          } > "$HOME/dev/build/ComfyUI/release-notes.md"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git show-ref --verify --quiet "refs/tags/v${PACKAGE_VERSION}"; then
+            [[ "$(git rev-list -n1 "v${PACKAGE_VERSION}")" == "$GITHUB_SHA" ]]
+          else
+            git tag "v${PACKAGE_VERSION}" "$GITHUB_SHA"
+            git push origin "v${PACKAGE_VERSION}"
+          fi
+          gh release create "v${PACKAGE_VERSION}" "$COMFYUI_PACKAGE_DIR/comfyui_${PACKAGE_VERSION}_pull.tar" \
+            --verify-tag --latest --title "v${PACKAGE_VERSION}" --notes-file "$HOME/dev/build/ComfyUI/release-notes.md"
+      - name: Open approved App Store tunnel
+        env:
+          APPSTORE_IP: ${{ secrets.APPSTORE_IP }}
+          APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
+        run: bash ictrek.app/scripts/appstore_tunnel.sh open
+      - name: Publish VOS App Store package
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 300 \
+            -F "package=@$COMFYUI_PACKAGE_DIR/comfyui_${PACKAGE_VERSION}_pull.tar" -F force=true \
+            http://127.0.0.1:18899/api/appstore/apps > "$HOME/dev/build/ComfyUI/publish-result.json"
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.request
+          response = json.loads((pathlib.Path.home() / 'dev/build/ComfyUI/publish-result.json').read_text())
+          if response.get('code') != 0:
+              raise SystemExit('VOS App Store publication rejected')
+          base = 'http://127.0.0.1:18899'
+          app_id = 'com.ictrek.comfyui'
+          version = os.environ['PACKAGE_VERSION']
+          with urllib.request.urlopen(f'{base}/api/appstore/apps/{app_id}', timeout=30) as result:
+              record = json.load(result)
+          detail = record.get('data') or {}
+          archive = detail.get('app_tar_gz') or {}
+          expected = f'appstore/apps/{app_id}/{version}/app.tar.gz'
+          if (record.get('code') != 0 or detail.get('id') != app_id
+                  or detail.get('current_version') != version or version not in detail.get('versions', [])
+                  or archive.get('download_path') != expected or archive.get('size', 0) <= 0):
+              raise SystemExit('Published App Store record does not match the release')
+          probe = urllib.request.Request(f'{base}/store/{expected}', headers={'Range': 'bytes=0-1'})
+          with urllib.request.urlopen(probe, timeout=30) as result:
+              if result.read(2) != b'\x1f\x8b':
+                  raise SystemExit('Published App Store archive is unavailable')
+          print(f'VOS App Store publication verified: {app_id} {version}')
+          PY
+      - name: Close App Store tunnel
+        if: always()
+        env:
+          APPSTORE_IP: ${{ secrets.APPSTORE_IP }}
+        run: bash ictrek.app/scripts/appstore_tunnel.sh close
+      - name: Remove temporary Feishu credentials
+        if: always()
+        run: rm -f "$HOME/.feishu.components.json"

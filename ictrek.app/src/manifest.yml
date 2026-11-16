@@ -1,0 +1,74 @@
+id: com.ictrek.comfyui
+name: {zh-CN: ComfyUI, en: ComfyUI}
+description:
+  zh-CN: 本地节点式图像与视频工作流，支持 VOS 账户和 V-Scheduler 共享模型。
+  en: Local node-based image and video workflows with VOS accounts and V-Scheduler shared models.
+version: __APP_VERSION__
+author: ictrek
+category: [ai]
+icon: icon.png
+arch: [amd64, arm64]
+platform:
+  version: ">=3.0.0"
+oauth2:
+  client:
+    id: com.ictrek.comfyui
+    client_type: public
+    redirect_uris: [https://app.vos-platform.internal/callback]
+    grant_types: [authorization_code, refresh_token]
+    response_types: [code]
+    scopes: [openid, profile, email]
+    pkce_required: true
+    token_endpoint_auth_method: none
+dependencies:
+  apps:
+    - id: com.ictrek.v-scheduler
+      version: __V_SCHEDULER_DEPENDENCY__
+      optional: false
+storage:
+  directories:
+    - path: data
+      uid: 0
+      gid: 0
+      mode: "0711"
+require-profiles: true
+profiles:
+  - name: amd
+    title: {zh-CN: "AMD64 NVIDIA CUDA 12.8", en: "AMD64 NVIDIA CUDA 12.8"}
+    caps:
+      arch: amd64
+      software: [cuda]
+    conflicts: [amd-without-cuda, arm, arm-without-cuda, l4t, thor-spark]
+  - name: amd-without-cuda
+    title: {zh-CN: "AMD64 CPU", en: "AMD64 CPU"}
+    caps:
+      arch: amd64
+    conflicts: [amd, arm, arm-without-cuda, l4t, thor-spark]
+  - name: arm
+    title: {zh-CN: "ARM64 NVIDIA CUDA 13.0", en: "ARM64 NVIDIA CUDA 13.0"}
+    caps:
+      arch: arm64
+      software: [cuda]
+      device-type: generic
+    conflicts: [amd, amd-without-cuda, arm-without-cuda, l4t, thor-spark]
+  - name: arm-without-cuda
+    title: {zh-CN: "ARM64 CPU", en: "ARM64 CPU"}
+    caps:
+      arch: arm64
+    conflicts: [amd, amd-without-cuda, arm, l4t, thor-spark]
+  - name: l4t
+    title: {zh-CN: "ARM64 Jetson Orin / L4T", en: "ARM64 Jetson Orin / L4T"}
+    caps:
+      arch: arm64
+      software: [cuda]
+      device-type:
+        - any-of: [l4t, jetson]
+    conflicts: [amd, amd-without-cuda, arm, arm-without-cuda, thor-spark]
+  - name: thor-spark
+    title: {zh-CN: "ARM64 Jetson Thor / DGX Spark", en: "ARM64 Jetson Thor / DGX Spark"}
+    caps:
+      arch: arm64
+      software: [cuda]
+      device-type:
+        - any-of: [thor, thor-spark, spark, dgx-spark]
+    conflicts: [amd, amd-without-cuda, arm, arm-without-cuda, l4t]

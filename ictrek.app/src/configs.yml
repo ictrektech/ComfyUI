@@ -1,0 +1,16 @@
+configs:
+  - name: MODEL_HUB_SHARED_MODELS_PATH
+    type: path
+    title: {zh-CN: V-Scheduler 共享模型目录, en: V-Scheduler shared model directory}
+    description:
+      zh-CN: 请选择与 V-Scheduler 安装设置相同的 NAS 公共目录。ComfyUI 只读加载兼容权重。
+      en: Select the same NAS public directory configured in V-Scheduler. ComfyUI loads compatible weights read-only.
+    default: /data/vos_workspace/model_hub
+    hints: [com.ictrek.model.storage]
+  - name: COMFYUI_MAX_WORKERS
+    type: integer
+    title: {zh-CN: 并发账户工作区, en: Concurrent account workspaces}
+    description:
+      zh-CN: 1–4，默认 1。每个工作区单独使用内存和显存；仅在设备资源充足时提高。
+      en: 1–4, default 1. Each workspace consumes its own RAM and VRAM. Increase only if the device has capacity.
+    default: 1

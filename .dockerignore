@@ -1,0 +1,13 @@
+.git
+.github
+**/__pycache__
+**/.pytest_cache
+.venv
+input
+output
+temp
+user
+models
+tests
+tests-unit
+ictrek.app/dist

@@ -1,0 +1,19 @@
+router-type: structured
+routers:
+  - id: comfyui
+    kind: page
+    title: { zh-CN: 工作流编辑器, en: Workflow Editor }
+    icon: lucide:workflow
+    order: 230
+    iframe-src: /app/com.ictrek.comfyui/
+    keep-alive: false
+    entry-point: true
+    embed: true
+  - id: comfyui-guide
+    kind: page
+    title: { zh-CN: API 集成指南, en: API Integration Guide }
+    icon: lucide:book-open
+    order: 240
+    iframe-src: /app/com.ictrek.comfyui/guide
+    keep-alive: false
+    embed: true

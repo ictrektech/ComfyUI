@@ -1,3 +1,5 @@
+> **VOS:** This fork provides a VOS package with account sign-in, language following, private workspaces, V-Scheduler shared models, and CPU/CUDA profiles. See [ComfyUI for VOS](ictrek.app/README.md) for setup and release instructions.
+
 <div align="center">
 
 # ComfyUI
