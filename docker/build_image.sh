@@ -46,6 +46,17 @@ if [[ "$runtime" == wheel && -f "$wheel_dir/$wheel" ]]; then
     printf '%s  %s\n' "$sha" "$wheel_dir/$wheel" | sha256sum --check --status
     runtime=cached-wheel
     wheel_args=(--build-context "torch_wheels=$wheel_dir" --build-arg "TORCH_WHEEL=$wheel")
+    machine=$(uname -m)
+    triton="triton-3.6.0-cp312-cp312-manylinux_2_27_$machine.manylinux_2_28_$machine.whl"
+    if [[ "$index" == cu* && -f "$wheel_dir/$triton" ]]; then
+        case "$arch" in
+          amd64) sha=6f5928e6d44c34a97bbe164cceddc0ef2007121c89ebcfba5415cf452de7ee9f ;;
+          arm64) sha=6e42d084864d12b8784736fe51a0cd05f6cc56775b25c8102c9d80c421f4e298 ;;
+        esac
+        printf '%s  %s\n' "$sha" "$wheel_dir/$triton" | sha256sum --check --status
+        runtime=cached-cuda-wheel
+        wheel_args+=(--build-arg "TRITON_WHEEL=$triton")
+    fi
 fi
 docker buildx build --builder default --load --provenance=false --sbom=false --platform "linux/$arch" \
     --build-arg "PYTHON_BASE=$base" --build-arg "TORCH_RUNTIME=$runtime" --build-arg "TORCH_INDEX=$index" \
