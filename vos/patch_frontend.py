@@ -2,6 +2,7 @@
 from importlib.metadata import distribution
 
 DISPATCHER = "missingModelMetadata-DdJ7s-5P.js"
+SCANNER = "missingModelScan-C_pOtMoV.js"
 
 
 def main():
@@ -15,7 +16,8 @@ def main():
             'else openUrlInNewTab(e.url,e.name);return{status:`browser-requested`}}',
         "function isModelDownloadable(e){":
             "function isModelDownloadable(e){if(window.vosComfyModelDownload"
-            '&&/^https:\\/\\/(www\\.)?modelscope\\.cn\\//.test(e.url)&&/\\.(safetensors|sft)$/.test(e.name))return!0;',
+            '&&/^https:\\/\\/(huggingface\\.co|(www\\.)?modelscope\\.cn)\\//.test(e.url)'
+            '&&(e.directory===\x60diffusers\x60||/\\.(safetensors|sft|gguf|ckpt|pt|pth|bin|onnx)$/i.test(e.name)))return!0;',
     }
     asset = assets / DISPATCHER
     source = asset.read_text()
@@ -24,6 +26,17 @@ def main():
     for anchor, replacement in patches.items():
         source = source.replace(anchor, replacement, 1)
     asset.write_text(source)
+    scanner = assets / SCANNER
+    source = scanner.read_text()
+    anchor = "function scanComboWidget(e,t,n,r){let i=e.valueWidget.value;if(typeof i!=\x60string\x60||!i.trim()||!isModelFileName(i))return null;"
+    if source.count(anchor) != 1:
+        raise SystemExit("Could not identify the pinned Diffusers widget scanner")
+    source = source.replace(anchor, anchor.replace("!isModelFileName(i)",
+                            "(!isModelFileName(i)&&!(window.vosComfyModelDownload&&e.nodeType===\x60DiffusersLoader\x60&&e.definitionWidgetName===\x60model_path\x60))"), 1)
+    widget = "isAssetSupported:a,name:i,directory:n?.(e.nodeType)"
+    if source.count(widget) != 1:
+        raise SystemExit("Could not identify the pinned combo widget directory")
+    scanner.write_text(source.replace(widget, widget.replace("directory:n?", "directory:e.nodeType===\x60DiffusersLoader\x60?\x60diffusers\x60:n?"), 1))
 
 
 if __name__ == "__main__":

@@ -12,7 +12,40 @@ upscale_models style_models vae vae_approx hypernetworks gligen photomaker model
 audio_encoders latent_upscale_models background_removal frame_interpolation
 geometry_estimation detection optical_flow
 """.split())
-ALIASES = {"clip": "text_encoders", "unet": "diffusion_models", "t2i_adapter": "controlnet"}
+ALIASES = {"clip": "text_encoders", "unet": "diffusion_models", "t2i_adapter": "controlnet",
+           "unet_gguf": "diffusion_models", "clip_gguf": "text_encoders"}
+WEIGHT_EXTENSIONS = frozenset({".safetensors", ".sft", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".onnx"})
+
+
+def diffusers_ready(path):
+    if not (path / "model_index.json").is_file():
+        return False
+    for name in ("unet", "vae", "text_encoder"):
+        component = path / name
+        direct = [p for p in component.glob("*")
+                  if p.name in {"diffusion_pytorch_model.safetensors", "diffusion_pytorch_model.fp16.safetensors",
+                                "diffusion_pytorch_model.bin", "diffusion_pytorch_model.fp16.bin",
+                                "model.safetensors", "model.fp16.safetensors", "pytorch_model.bin",
+                                "pytorch_model.fp16.bin"}]
+        if any(p.is_file() for p in direct):
+            continue
+        for index in sorted(component.glob("*.index.json")):
+            try:
+                if index.stat().st_size > 16 * 1024 * 1024:
+                    continue
+                mapping = json.loads(index.read_text()).get("weight_map")
+                if not mapping or not isinstance(mapping, dict):
+                    continue
+                directory = component.resolve()
+                shards = {(directory / file).resolve() for file in mapping.values()}
+                if all(p.is_relative_to(directory) and p.suffix in {".safetensors", ".bin"} and p.is_file()
+                       for p in shards):
+                    break
+            except (OSError, TypeError, ValueError, AttributeError):
+                continue
+        else:
+            return False
+    return True
 
 
 def infer_category(file):
@@ -64,7 +97,9 @@ def catalog_links(models, shared, aliases=()):
         if not root.is_relative_to(export / model["source"]) or not root.is_dir():
             continue
         roots[f"{relative.parts[0]}://{relative.parts[1]}/{relative.parts[2]}".lower()] = root
-        for file in root.rglob("*.safetensors"):
+        for file in root.rglob("*"):
+            if file.suffix.lower() not in WEIGHT_EXTENSIONS:
+                continue
             resolved = file.resolve()
             if not resolved.is_relative_to(root) or not resolved.is_file():
                 continue
@@ -72,7 +107,7 @@ def catalog_links(models, shared, aliases=()):
             folders = [ALIASES.get(part, part) for part in parts[:-1]]
             category = next((folder for folder in reversed(folders) if folder in CATEGORIES), None)
             # Diffusers shards are not standalone native weights.
-            if category is None and len(parts) == 1:
+            if category is None and len(parts) == 1 and file.suffix.lower() in {".safetensors", ".sft"}:
                 category = infer_category(resolved)
             if category is None:
                 continue
@@ -81,21 +116,24 @@ def catalog_links(models, shared, aliases=()):
     for category, name, repo, file in aliases:
         if root := roots.get(repo.lower()):
             target = (root / file).resolve()
-            if target.is_relative_to(root) and target.is_file():
+            available = diffusers_ready(target) if category == "diffusers" else target.is_file()
+            if target.is_relative_to(root) and available:
                 result.setdefault(Path(category, name), target)
     return result
 
 
 def sync_links(projection, links):
     for path in projection.rglob("*"):
-        if path.suffix in {".safetensors", ".sft"} and path.is_symlink() and path.relative_to(projection) not in links:
+        if path.is_symlink() and path.relative_to(projection) not in links:
             path.unlink()
     for name, target in links.items():
         link = projection / name
+        if not link.parent.resolve().is_relative_to(projection.resolve()):
+            raise OSError("model path would traverse another projection")
         if link.is_symlink() and link.readlink() == target:
             continue
         link.parent.mkdir(parents=True, exist_ok=True)
-        pending = link.with_suffix(".tmp-link")
+        pending = link.with_name(link.name + ".tmp-link")
         pending.unlink(missing_ok=True)
         pending.symlink_to(target)
         pending.replace(link)

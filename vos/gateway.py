@@ -22,7 +22,7 @@ from yarl import URL
 
 import models
 from downloads import Downloads
-from patch_frontend import DISPATCHER
+from patch_frontend import DISPATCHER, SCANNER
 
 APP = "com.ictrek.comfyui"
 BASE = f"/app/{APP}/"
@@ -260,6 +260,7 @@ class Gateway:
             env.update(HOME=str(workspace), USER=f"comfyui-{uid}", LOGNAME=f"comfyui-{uid}",
                        XDG_CACHE_HOME=str(workspace / ".cache"), TMPDIR=str(workspace / "tmp"),
                        TORCHINDUCTOR_CACHE_DIR=str(workspace / ".cache" / "torchinductor"),
+                       VOS_COMFYUI_BUNDLED_NODES=str(VOS / "vendor"),
                        PYTHONDONTWRITEBYTECODE="1")
             device = os.getenv("COMFYUI_DEVICE", "cpu")
             groups = shared_model_groups()
@@ -271,7 +272,8 @@ class Gateway:
             worker = Worker(await asyncio.create_subprocess_exec(
                 sys.executable, str(ROOT / "main.py"), "--listen", "127.0.0.1", "--port", str(port),
                 "--base-directory", str(workspace), "--models-directory", str(PROJECTION),
-                "--disable-all-custom-nodes", "--disable-auto-launch", *flags,
+                "--disable-all-custom-nodes", "--whitelist-custom-nodes", "ComfyUI-GGUF",
+                "--disable-auto-launch", *flags,
                 cwd=workspace, env=env, user=uid, group=uid, extra_groups=sorted(groups), umask=0o077,
                 start_new_session=True), port, time.monotonic(), inflight=1)
             self.workers[login.subject] = worker
@@ -309,6 +311,8 @@ class Gateway:
         ):
             raise web.HTTPForbidden()
         owner = workspace_scope((await self.authenticate(request)).subject)
+        if request.path.endswith("/sources"):
+            return await self.downloads.choices(request, self.http)
         if request.method == "POST":
             return await self.downloads.start(request, owner, self.http)
         return await self.downloads.status(request, owner, self.http)
@@ -369,8 +373,8 @@ class Gateway:
                                          allow_redirects=False) as upstream:
                 headers = filtered(upstream.headers, HOP | {"set-cookie"})
                 if path == "index.html" and upstream.status == 200 and request.method == "GET":
-                    asset = f"./assets/{DISPATCHER}"
-                    import_map = json.dumps({"imports": {asset: asset + "?vos-model-downloads"}})
+                    assets = [f"./assets/{filename}" for filename in (DISPATCHER, SCANNER)]
+                    import_map = json.dumps({"imports": {asset: asset + "?vos-model-formats" for asset in assets}})
                     page = (await upstream.text()).replace(
                         "<head>", f'<head><script type="importmap">{import_map}</script>'
                         f'<script src="{BASE}storage.js" data-workspace="{scope}"></script>', 1
@@ -380,7 +384,7 @@ class Gateway:
                     headers["Cache-Control"] = "no-store"
                     headers["Content-Type"] = "text/html; charset=utf-8"
                     return web.Response(text=page, status=200, headers=headers)
-                if path.split("/", 1)[0] not in STATIC or path == f"assets/{DISPATCHER}":
+                if path.split("/", 1)[0] not in STATIC or path in {f"assets/{DISPATCHER}", f"assets/{SCANNER}"}:
                     headers["Cache-Control"] = "private, no-store"
                 response = web.StreamResponse(status=upstream.status, headers=headers)
                 await response.prepare(request)
@@ -475,6 +479,7 @@ def app():
     app.router.add_delete(BASE + "session", gateway.session)
     app.router.add_post(BASE + "prepare", gateway.open_editor)
     app.router.add_post(BASE + "model-downloads", gateway.model_downloads)
+    app.router.add_post(BASE + "model-downloads/sources", gateway.model_downloads)
     app.router.add_get(BASE + "model-downloads/{batch:[0-9a-f]{32}}", gateway.model_downloads)
     app.router.add_route("*", EDITOR + "workspace/{scope:[0-9a-f]{32}}/{path:.*}", gateway.proxy)
     app.router.add_route("*", EDITOR + "{path:.*}", gateway.proxy)

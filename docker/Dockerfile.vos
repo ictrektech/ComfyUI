@@ -48,5 +48,11 @@ COPY requirements.txt docker/check_dependencies.py ./
 RUN PIP_CONFIG_FILE=/dev/null PIP_EXTRA_INDEX_URL= python3 -m pip install --timeout 120 --no-cache-dir --index-url https://pypi.org/simple -r requirements.txt && python3 check_dependencies.py
 COPY . .
 RUN python3 vos/patch_frontend.py
+ADD --checksum=sha256:688126d5c2b8c4ff061f56b23c3c6791ac01dc366e98d41ef1aaef374c36f283 https://codeload.github.com/city96/ComfyUI-GGUF/tar.gz/6ea2651e7df66d7585f6ffee804b20e92fb38b8a /tmp/comfyui-gguf.tar.gz
+RUN mkdir -p vos/vendor/ComfyUI-GGUF \
+    && tar -xzf /tmp/comfyui-gguf.tar.gz -C vos/vendor/ComfyUI-GGUF --strip-components=1 \
+    && rm /tmp/comfyui-gguf.tar.gz \
+    && PIP_CONFIG_FILE=/dev/null PIP_EXTRA_INDEX_URL= python3 -m pip install --no-cache-dir \
+        --index-url https://pypi.org/simple gguf==0.19.0
 EXPOSE 8188
 ENTRYPOINT ["python3", "vos/gateway.py"]

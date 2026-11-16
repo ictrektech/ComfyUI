@@ -5,7 +5,6 @@
   let timer
   let notice
   let activeBatches = []
-  let sources
 
   const app = () => window.comfyAPI?.app?.app
   const chinese = () => (app()?.extensionManager?.setting?.get('Comfy.Locale') ?? navigator.language).startsWith('zh')
@@ -42,28 +41,13 @@
     }
   }
 
-  function mirrorOf(model, catalog) {
-    const file = model.name.split(/[\\/]/).at(-1)
-    const known = catalog[file]
-    if (!known) return null
-    const url = new URL(model.url)
-    const path = decodeURIComponent(url.pathname)
-    if (url.hostname === 'huggingface.co' && path === `/${known.hf}/resolve/main/${file}`) return 'hf'
-    if (url.hostname.replace(/^www\./, '') !== 'modelscope.cn') return null
-    if (path === `/models/${known.ms}/resolve/master/${file}` ||
-        (path === `/api/v1/models/${known.ms}/repo` && url.searchParams.get('Revision') === 'master' &&
-         url.searchParams.get('FilePath') === file)) return 'ms'
-    return null
-  }
-
   async function choose(models) {
-    sources ??= request('/app/com.ictrek.comfyui/model-sources.json').catch(error => {
-      sources = undefined
-      throw error
+    show(label('正在核对模型来源…', 'Checking model sources…'))
+    const { choices } = await request(endpoint + '/sources', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models })
     })
-    const catalog = await sources
-    const choices = models.map(model => mirrorOf(model, catalog))
-    if (!choices.some(Boolean)) return models
+    if (choices.some(options => !options.length)) throw new Error('400')
+    if (!choices.some(options => options.length > 1)) return models
 
     const dialog = document.createElement('dialog')
     dialog.dataset.testid = 'vos-model-download-sources'
@@ -88,13 +72,13 @@
       name.textContent = model.name
       row.append(name)
       form.append(row)
-      if (!choices[index]) return null
+      if (choices[index].length < 2) return null
       const select = document.createElement('select')
       Object.assign(select.style, { padding: '6px', border: '1px solid #5b626e', borderRadius: '6px' })
       for (const [value, caption] of [['hf', 'Hugging Face'], ['ms', 'ModelScope']]) {
         select.add(new Option(caption, value))
       }
-      select.value = choices[index]
+      select.value = new URL(model.url).hostname === 'huggingface.co' ? 'hf' : 'ms'
       row.append(select)
       return select
     })
@@ -198,9 +182,9 @@
 
   window.vosComfyModelDownload = model => {
     const { url, name, directory } = model
-    if (!/^https:\/\/(huggingface\.co|(?:www\.)?modelscope\.cn)\//.test(url) || !/\.(safetensors|sft)$/.test(name)) {
-      show(label('V-Scheduler 支持 Hugging Face 和 ModelScope 的 safetensors 权重。',
-        'V-Scheduler downloads safetensors weights from Hugging Face and ModelScope.'))
+    if (!/^https:\/\/(huggingface\.co|(?:www\.)?modelscope\.cn)\//.test(url)) {
+      show(label('请选择 Hugging Face 或 ModelScope 的仓库文件链接。',
+        'Use a Hugging Face or ModelScope repository link.'))
       return
     }
     waiting.set(JSON.stringify([url, name, directory]), { url, name, directory })

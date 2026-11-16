@@ -6,7 +6,7 @@ Install V-Scheduler and choose the same shared model path when installing ComfyU
 
 Comfy Partner Nodes are enabled across the VOS profiles. Local workflows use VOS sign-in alone. For cloud workflows, use the editor's profile menu to sign in to Comfy or enter a Comfy account API key. Use the key option on a LAN address or a domain outside Comfy's allowlist. The cloud service needs network access and available Comfy credits.
 
-In **Issues → Missing Models**, **Download** and **Download All** submit linked Hugging Face or ModelScope safetensors files to V-Scheduler. Choose Hugging Face or ModelScope for the two verified Lotus Depth template weights. The editor refreshes as files become available, keeping the workflow's saved relative paths. The VOS image verifies the download hook against the pinned frontend at build time. Review the hook when upgrading the frontend dependency.
+In **Issues → Missing Models**, **Download** and **Download All** submit linked Hugging Face or ModelScope model files and standard Diffusers repositories to V-Scheduler. Choose Hugging Face or ModelScope when matching SHA-256 hashes are available. The image bundles the GGUF loaders. Custom nodes can reuse weights with a declared repository link and model directory. The editor refreshes as files become available, keeping the workflow's saved relative paths. The VOS image verifies the download hook against the pinned frontend at build time. Review the hook when upgrading the frontend dependency.
 
 | Profile | Runtime | Feishu sheet |
 | --- | --- | --- |

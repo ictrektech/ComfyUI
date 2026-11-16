@@ -79,12 +79,25 @@ async def main():
         # Workers can traverse the VOS storage mount to the read-only model index.
         os.chmod(root, 0o755)
         import gateway
-        from downloads import model_request
+        from downloads import model_request, repository_files
         lotus = "lotus-depth-d-v1-1.safetensors"
         from_hf = {"name": lotus, "directory": "diffusion_models",
                    "url": f"https://huggingface.co/Comfy-Org/lotus/resolve/main/{lotus}"}
         assert model_request(from_hf)[2] == "hf://Comfy-Org/lotus"
         assert model_request({**from_hf, "source": "ms"})[2] == "ms://Comfy-Org/lotus"
+        for category, model in (("clip_gguf", "test.gguf"), ("checkpoints", "test.ckpt"),
+                                ("node_declared_weights", "test.onnx")):
+            assert model_request({"directory": category, "name": model,
+                                  "url": f"https://huggingface.co/fixtures/weights/resolve/main/{model}"})[3] == model
+        assert model_request({"directory": "diffusers", "name": "depth/test",
+                              "url": "https://huggingface.co/fixtures/weights/tree/main/pipeline"}) == (
+            "diffusers", "depth/test", "hf://fixtures/weights", "pipeline")
+        members = ["model_index.json", "unet/diffusion_pytorch_model.safetensors.index.json",
+                   "unet/diffusion_pytorch_model-00001-of-00002.safetensors",
+                   "unet/diffusion_pytorch_model-00002-of-00002.safetensors",
+                   "vae/diffusion_pytorch_model.safetensors", "text_encoder/model.safetensors"]
+        metadata = {"files": [{"path": "pipeline/" + path} for path in members + ["run.py"]]}
+        assert set(repository_files(metadata, "diffusers", "pipeline")) == {"pipeline/" + path for path in members}
         async with TestServer(gateway.app()) as application, ClientSession() as client:
             def url(path):
                 return application.make_url(gateway.EDITOR + path)
@@ -135,6 +148,8 @@ async def main():
                     assert response.status == 200 and name in await response.json()
             async with client.get(url("api/object_info/IdeogramV4"), headers=alice) as response:
                 assert response.status == 200 and (await response.json())["IdeogramV4"]["api_node"] is True
+            async with client.get(url("api/object_info/UnetLoaderGGUF"), headers=alice) as response:
+                assert response.status == 200 and "UnetLoaderGGUF" in await response.json()
             async with client.ws_connect(url("ws"), headers=alice) as socket:
                 message = await socket.receive_json(timeout=10)
                 assert message["type"] == "status" and message["data"]["sid"]
