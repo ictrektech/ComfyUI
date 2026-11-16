@@ -60,6 +60,18 @@ def cuda_device_groups():
     return sorted(groups)
 
 
+def shared_model_groups():
+    groups = set()
+    for path in (SHARED, SHARED / "export"):
+        try:
+            directory = path.stat()
+        except OSError:
+            continue
+        if stat.S_ISDIR(directory.st_mode) and directory.st_gid and directory.st_mode & stat.S_IXGRP:
+            groups.add(directory.st_gid)
+    return groups
+
+
 def token_payload(token):
     try:
         payload = token.split(".")[1]
@@ -250,7 +262,9 @@ class Gateway:
                        TORCHINDUCTOR_CACHE_DIR=str(workspace / ".cache" / "torchinductor"),
                        PYTHONDONTWRITEBYTECODE="1")
             device = os.getenv("COMFYUI_DEVICE", "cpu")
-            groups = cuda_device_groups() if device == "cuda" else []
+            groups = shared_model_groups()
+            if device in {"cuda", "l4t"}:
+                groups.update(cuda_device_groups())
             flags = ["--cpu"] if device == "cpu" else []
             if device == "l4t":
                 flags += ["--disable-dynamic-vram", "--disable-pinned-memory"]
@@ -258,7 +272,7 @@ class Gateway:
                 sys.executable, str(ROOT / "main.py"), "--listen", "127.0.0.1", "--port", str(port),
                 "--base-directory", str(workspace), "--models-directory", str(PROJECTION),
                 "--disable-all-custom-nodes", "--disable-auto-launch", *flags,
-                cwd=workspace, env=env, user=uid, group=uid, extra_groups=groups, umask=0o077,
+                cwd=workspace, env=env, user=uid, group=uid, extra_groups=sorted(groups), umask=0o077,
                 start_new_session=True), port, time.monotonic(), inflight=1)
             self.workers[login.subject] = worker
             return worker

@@ -72,6 +72,8 @@ async def main():
         model = root / "modelhub/export/hf/fixtures/models/current/checkpoints/smoke.safetensors"
         model.parent.mkdir(parents=True)
         model.write_text("catalog fixture; not used for inference")
+        os.chown(root / "modelhub", 0, 65534)
+        os.chmod(root / "modelhub", 0o750)
         os.environ["COMFYUI_MODEL_HUB_MOUNT"] = str(root / "modelhub")
         os.environ["COMFYUI_MODEL_INDEX"] = str(root / "catalog")
         # Workers can traverse the VOS storage mount to the read-only model index.
