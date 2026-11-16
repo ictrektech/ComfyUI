@@ -124,7 +124,7 @@
     }
     const apply = (value) => setLocale(value).catch(() => console.warn('ComfyUI language sync is unavailable'))
     vos.broadcast?.on('locale-change', event => apply(event.locale))
-    const initial = vos.platform?.getLocale?.() ?? vos.getLocale?.()
+    const initial = vos.platform?.getLocale?.() ?? vos.getLocale?.() ?? vos.getState?.()
     if (initial) Promise.resolve(initial).then(data => apply(data?.locale)).catch(() => {})
     if (guide) return
     const oauth = vos.api?.v1000?.oauth2
