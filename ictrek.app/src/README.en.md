@@ -7,4 +7,4 @@ A node-based editor for local image and video workflows on VOS. Select one profi
 3. Download compatible shared weights in V-Scheduler's model manager. ComfyUI checks for completed downloads about every 30 seconds. Refresh the loader options, select the weights in the matching model category, connect the workflow, and click Run.
 4. Open **ComfyUI → API Integration Guide** for instructions, model compatibility, and API examples.
 
-Workflows, uploads, outputs, and queues are isolated by VOS account. The shared model directory is read-only. Partner nodes and third-party custom nodes are disabled.
+Workflows, uploads, outputs, and queues are isolated by VOS account. The shared model directory is read-only. For Comfy Partner Nodes, use the editor's profile menu to sign in to Comfy or enter a Comfy account API key. On a LAN address, choose the API key option. Local nodes use VOS sign-in alone. Third-party custom nodes are disabled.

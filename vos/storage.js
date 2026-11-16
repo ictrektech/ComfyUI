@@ -28,6 +28,17 @@
       // The WebView may already disable browser storage.
     }
   }
+  // Comfy sign-in can restore Firebase sessions from IndexedDB as well.
+  try {
+    const database = window.indexedDB
+    for (const method of ['open', 'deleteDatabase']) {
+      const original = database[method].bind(database)
+      database[method] = (name, ...args) =>
+        original(name === 'firebaseLocalStorageDb' ? prefix + name : name, ...args)
+    }
+  } catch {
+    // IndexedDB can be unavailable in embedded browsers.
+  }
   if (window.BroadcastChannel) {
     window.BroadcastChannel = class extends window.BroadcastChannel {
       constructor(name) { super(prefix + name) }

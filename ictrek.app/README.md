@@ -4,6 +4,8 @@ The `codex/vos` branch starts from the official release identified by `UPSTREAM_
 
 Install V-Scheduler and choose the same shared model path when installing ComfyUI. Ready HF or ModelScope weights in supported ComfyUI subfolders (for example `split_files/diffusion_models/` or `checkpoints/`) appear in the native loaders after the next 30-second poll. ComfyUI mounts the shared directory read-only. Pick a single profile matching your architecture, CUDA runtime, and VOS device capabilities. A worker has a private data directory and queue. Worker history is in memory; save work and download outputs before switching profiles or restarting.
 
+Comfy Partner Nodes are enabled across the VOS profiles. Local workflows use VOS sign-in alone. For cloud workflows, use the editor's profile menu to sign in to Comfy or enter a Comfy account API key. Use the key option on a LAN address or a domain outside Comfy's allowlist. The cloud service needs network access and available Comfy credits.
+
 | Profile | Runtime | Feishu sheet |
 | --- | --- | --- |
 | `amd` | AMD64 NVIDIA CUDA 12.8 | `AMD_with_cuda` |

@@ -254,7 +254,7 @@ class Gateway:
             worker = Worker(await asyncio.create_subprocess_exec(
                 sys.executable, str(ROOT / "main.py"), "--listen", "127.0.0.1", "--port", str(port),
                 "--base-directory", str(workspace), "--models-directory", str(PROJECTION),
-                "--offline", "--disable-all-custom-nodes", "--disable-auto-launch", *flags,
+                "--disable-all-custom-nodes", "--disable-auto-launch", *flags,
                 cwd=workspace, env=env, user=uid, group=uid, extra_groups=groups, umask=0o077,
                 start_new_session=True), port, time.monotonic(), inflight=1)
             self.workers[login.subject] = worker

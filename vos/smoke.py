@@ -73,6 +73,8 @@ async def main():
                 assert response.status == 200 and isinstance(await response.json(), dict)
             async with client.get(url("api/models/checkpoints"), headers=alice) as response:
                 assert response.status == 200 and await response.json() == ["hf/fixtures/models/checkpoints/smoke.safetensors"]
+            async with client.get(url("api/object_info/IdeogramV4"), headers=alice) as response:
+                assert response.status == 200 and (await response.json())["IdeogramV4"]["api_node"] is True
             async with client.ws_connect(url("ws"), headers=alice) as socket:
                 message = await socket.receive_json(timeout=10)
                 assert message["type"] == "status" and message["data"]["sid"]
@@ -109,7 +111,7 @@ async def main():
             async with client.get(url("api/view"), params=image, headers=bob) as response:
                 assert response.status == 404
             sys.stdout.write("VOS smoke passed: authentication, editor, settings, WebSocket, "
-                             "input upload, execution and account isolation\n")
+                             "partner node discovery, local execution without Comfy credentials, and account isolation\n")
 
 
 if __name__ == "__main__":
