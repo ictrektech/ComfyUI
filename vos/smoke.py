@@ -79,6 +79,12 @@ async def main():
         # Workers can traverse the VOS storage mount to the read-only model index.
         os.chmod(root, 0o755)
         import gateway
+        from downloads import model_request
+        lotus = "lotus-depth-d-v1-1.safetensors"
+        from_hf = {"name": lotus, "directory": "diffusion_models",
+                   "url": f"https://huggingface.co/Comfy-Org/lotus/resolve/main/{lotus}"}
+        assert model_request(from_hf)[2] == "hf://Comfy-Org/lotus"
+        assert model_request({**from_hf, "source": "ms"})[2] == "ms://Comfy-Org/lotus"
         async with TestServer(gateway.app()) as application, ClientSession() as client:
             def url(path):
                 return application.make_url(gateway.EDITOR + path)

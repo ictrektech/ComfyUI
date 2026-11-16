@@ -1,0 +1,12 @@
+{
+  "lotus-depth-d-v1-1.safetensors": {
+    "sha256": "dc1394219a04afdd9f72ad41ea0d3dfa435603fc7831a0ac5b884cc2b2ebf688",
+    "hf": "Comfy-Org/lotus",
+    "ms": "Comfy-Org/lotus"
+  },
+  "vae-ft-mse-840000-ema-pruned.safetensors": {
+    "sha256": "735e4c3a447a3255760d7f86845f09f937809baa529c17370d83e4c3758f3c75",
+    "hf": "stabilityai/sd-vae-ft-mse-original",
+    "ms": "AI-ModelScope/sd-vae-ft-mse-original"
+  }
+}

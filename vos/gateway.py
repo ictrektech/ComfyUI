@@ -466,6 +466,7 @@ def app():
     app.router.add_get(BASE + "bridge.js", static("bridge.js"))
     app.router.add_get(BASE + "storage.js", static("storage.js"))
     app.router.add_get(BASE + "model-downloads.js", static("model-downloads.js"))
+    app.router.add_get(BASE + "model-sources.json", static("model-sources.json"))
     app.router.add_get(BASE + "guide", static("guide.html"))
     async def specification(request):
         return web.FileResponse(ROOT / "openapi.yaml", headers={"Content-Type": "text/yaml; charset=utf-8"})

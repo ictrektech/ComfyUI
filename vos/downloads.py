@@ -4,8 +4,8 @@ import json
 import re
 import secrets
 from collections import defaultdict
-from pathlib import PurePosixPath
-from urllib.parse import unquote, urlsplit
+from pathlib import Path, PurePosixPath
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import aiohttp
 from aiohttp import web
@@ -15,6 +15,13 @@ import models
 REPOSITORY_SEGMENT = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,95}")
 MODEL_EXTENSIONS = {".safetensors", ".sft"}
 ACTIVE_PHASES = {"PENDING", "DOWNLOADING", "VERIFYING"}
+SOURCES = json.loads(Path(__file__).with_name("model-sources.json").read_text())
+
+
+def mirror_for(repo, file):
+    mirror = SOURCES.get(file)
+    source, repository = repo.split("://", 1)
+    return mirror if mirror and mirror.get(source, "").lower() == repository.lower() else None
 
 
 def segments(value):
@@ -47,12 +54,25 @@ def model_request(value):
         source, owner, repo, file = "hf", parts[0], parts[1], "/".join(parts[4:])
     elif url.netloc in {"modelscope.cn", "www.modelscope.cn"} and len(parts) >= 6 and parts[0] == "models" and parts[3:5] == ["resolve", "master"]:
         source, owner, repo, file = "ms", parts[1], parts[2], "/".join(parts[5:])
+    elif url.netloc in {"modelscope.cn", "www.modelscope.cn"} and len(parts) == 6 and parts[:3] == ["api", "v1", "models"] and parts[-1] == "repo":
+        fields = parse_qs(url.query)
+        if fields.get("Revision") != ["master"] or len(fields.get("FilePath", [])) != 1:
+            raise ValueError("expected a ModelScope master file URL")
+        source, owner, repo, file = "ms", parts[3], parts[4], fields["FilePath"][0]
     else:
         raise ValueError("expected a Hugging Face main or ModelScope master file URL")
     if (not REPOSITORY_SEGMENT.fullmatch(owner) or not REPOSITORY_SEGMENT.fullmatch(repo)
             or segments(file)[-1] != name_parts[-1]):
         raise ValueError("model filename does not match repository file")
-    return category, name, f"{source}://{owner}/{repo}", file
+    repository = f"{source}://{owner}/{repo}"
+    selected = value.get("source", source)
+    if selected not in ("hf", "ms"):
+        raise ValueError("unknown model source")
+    if mirror := mirror_for(repository, file):
+        repository = f"{selected}://{mirror[selected]}"
+    elif selected != source:
+        raise ValueError("no verified mirror for this file")
+    return category, name, repository, file
 
 
 class Downloads:
@@ -77,6 +97,10 @@ class Downloads:
     async def refresh(self, session):
         async with self.lock:
             aliases = self.db.execute("SELECT * FROM model_aliases").fetchall()
+            for category, name, repo, file in tuple(aliases):
+                if mirror := mirror_for(repo, file):
+                    other = "ms" if repo.startswith("hf://") else "hf"
+                    aliases.append((category, name, f"{other}://{mirror[other]}", file))
             return await models.refresh(session, self.hub, self.shared, self.projection, aliases)
 
     async def submit_repo(self, session, repo, entries):
@@ -88,6 +112,16 @@ class Downloads:
             return None, "scheduler_unavailable"
         if not files:
             return None, None
+        verified = {file: mirror["sha256"] for file in files if (mirror := mirror_for(repo, file))}
+        if verified:
+            source = repo.split(":", 1)[0]
+            status, metadata = await self.call(session, "models/repository-files",
+                                               params={"source": source, "model_id": repo})
+            if status != 200:
+                return None, "scheduler_unavailable"
+            hashes = {file["path"]: file.get("sha256") for file in metadata["files"]}
+            if any(hashes.get(file) != expected for file, expected in verified.items()):
+                return None, "mirror_mismatch"
         status, result = await self.call(session, "models/pull", body={
             "source": repo.split(":", 1)[0], "model_id": repo, "files": sorted(files), "append": True,
         })
@@ -115,7 +149,8 @@ class Downloads:
             task, error = await self.submit_repo(session, repo, entries)
         except (aiohttp.ClientError, TimeoutError, ValueError, KeyError):
             task, error = None, "scheduler_unavailable"
-        return [{"directory": category, "name": name, "task_id": task, "error": error}
+        return [{"directory": category, "name": name, "source": repo.split(":", 1)[0],
+                 "task_id": task, "error": error}
                 for category, name, _, _ in entries]
 
     async def start(self, request, owner, session):
@@ -137,9 +172,14 @@ class Downloads:
                     previous = self.db.execute(
                         "SELECT repository,file FROM model_aliases WHERE category=? AND name=?", (category, name)
                     ).fetchone()
-                    if previous is not None and previous != (repo, file):
+                    mirror = mirror_for(repo, file)
+                    if previous is not None and previous != (repo, file) and (
+                        not mirror or mirror_for(*previous) != mirror
+                    ):
                         raise web.HTTPConflict(reason="Workflow model path is already bound")
-                    self.db.execute("INSERT OR IGNORE INTO model_aliases VALUES (?,?,?,?)", (category, name, repo, file))
+                    self.db.execute("""INSERT INTO model_aliases VALUES (?,?,?,?)
+                        ON CONFLICT(category,name) DO UPDATE SET repository=excluded.repository,file=excluded.file""",
+                                    (category, name, repo, file))
         limit = asyncio.Semaphore(4)
 
         async def submit(repo, items):

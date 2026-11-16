@@ -5,6 +5,7 @@
   let timer
   let notice
   let activeBatches = []
+  let sources
 
   const app = () => window.comfyAPI?.app?.app
   const chinese = () => (app()?.extensionManager?.setting?.get('Comfy.Locale') ?? navigator.language).startsWith('zh')
@@ -39,6 +40,88 @@
     } catch {
       // The download still runs in Model Hub if the browser blocks storage.
     }
+  }
+
+  function mirrorOf(model, catalog) {
+    const file = model.name.split(/[\\/]/).at(-1)
+    const known = catalog[file]
+    if (!known) return null
+    const url = new URL(model.url)
+    const path = decodeURIComponent(url.pathname)
+    if (url.hostname === 'huggingface.co' && path === `/${known.hf}/resolve/main/${file}`) return 'hf'
+    if (url.hostname.replace(/^www\./, '') !== 'modelscope.cn') return null
+    if (path === `/models/${known.ms}/resolve/master/${file}` ||
+        (path === `/api/v1/models/${known.ms}/repo` && url.searchParams.get('Revision') === 'master' &&
+         url.searchParams.get('FilePath') === file)) return 'ms'
+    return null
+  }
+
+  async function choose(models) {
+    sources ??= request('/app/com.ictrek.comfyui/model-sources.json').catch(error => {
+      sources = undefined
+      throw error
+    })
+    const catalog = await sources
+    const choices = models.map(model => mirrorOf(model, catalog))
+    if (!choices.some(Boolean)) return models
+
+    const dialog = document.createElement('dialog')
+    dialog.dataset.testid = 'vos-model-download-sources'
+    dialog.setAttribute('aria-label', label('选择模型下载来源', 'Choose model download sources'))
+    Object.assign(dialog.style, {
+      colorScheme: 'dark', background: '#24272e', color: '#fff', border: '1px solid #484e5b',
+      borderRadius: '12px', padding: '20px', width: 'min(570px, 90vw)', maxHeight: '80vh'
+    })
+    const form = document.createElement('form')
+    form.method = 'dialog'
+    const title = document.createElement('h2')
+    title.textContent = dialog.getAttribute('aria-label')
+    Object.assign(title.style, { fontSize: '17px', fontWeight: '600', marginBottom: '12px' })
+    form.append(title)
+    const controls = models.map((model, index) => {
+      const row = document.createElement('label')
+      Object.assign(row.style, {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        gap: '12px', margin: '10px 0', overflowWrap: 'anywhere'
+      })
+      const name = document.createElement('span')
+      name.textContent = model.name
+      row.append(name)
+      form.append(row)
+      if (!choices[index]) return null
+      const select = document.createElement('select')
+      Object.assign(select.style, { padding: '6px', border: '1px solid #5b626e', borderRadius: '6px' })
+      for (const [value, caption] of [['hf', 'Hugging Face'], ['ms', 'ModelScope']]) {
+        select.add(new Option(caption, value))
+      }
+      select.value = choices[index]
+      row.append(select)
+      return select
+    })
+    const actions = document.createElement('div')
+    Object.assign(actions.style, { display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' })
+    for (const [value, text] of [['cancel', label('取消', 'Cancel')], ['download', label('开始下载', 'Start download')]]) {
+      const button = document.createElement('button')
+      button.value = value
+      button.textContent = text
+      Object.assign(button.style, {
+        padding: '7px 11px', borderRadius: '6px', background: value === 'download' ? '#196ac8' : '#414753'
+      })
+      actions.append(button)
+    }
+    form.append(actions)
+    dialog.append(form)
+    document.body.append(dialog)
+    return new Promise(resolve => {
+      dialog.addEventListener('close', () => {
+        const selected = dialog.returnValue === 'download'
+          ? models.map((model, index) => controls[index] ? { ...model, source: controls[index].value } : model)
+          : []
+        dialog.remove()
+        resolve(selected)
+      }, { once: true })
+      dialog.showModal()
+    })
   }
 
   async function watch(id) {
@@ -92,10 +175,12 @@
   }
 
   async function submit() {
-    const models = [...waiting.values()]
+    const pending = [...waiting.values()]
     waiting.clear()
-    show(label('正在提交到 V-Scheduler…', 'Submitting to V-Scheduler…'))
     try {
+      const models = await choose(pending)
+      if (!models.length) return
+      show(label('正在提交到 V-Scheduler…', 'Submitting to V-Scheduler…'))
       const { id } = await request(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models })
       })
