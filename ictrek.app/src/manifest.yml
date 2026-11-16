@@ -35,17 +35,26 @@ require-profiles: true
 profiles:
   - name: amd
     title: {zh-CN: "AMD64 NVIDIA CUDA 12.8", en: "AMD64 NVIDIA CUDA 12.8"}
+    description:
+      zh-CN: 适用于配有 NVIDIA GPU 且支持 CUDA 12.8 的 AMD64 设备。
+      en: For AMD64 devices with an NVIDIA GPU and CUDA 12.8 support.
     caps:
       arch: amd64
       software: [cuda]
     conflicts: [amd-without-cuda, arm, arm-without-cuda, l4t, thor-spark]
   - name: amd-without-cuda
     title: {zh-CN: "AMD64 CPU", en: "AMD64 CPU"}
+    description:
+      zh-CN: 在 AMD64 设备上使用 CPU 执行工作流。
+      en: Runs workflows on the CPU on AMD64 devices.
     caps:
       arch: amd64
     conflicts: [amd, arm, arm-without-cuda, l4t, thor-spark]
   - name: arm
     title: {zh-CN: "ARM64 NVIDIA CUDA 13.0", en: "ARM64 NVIDIA CUDA 13.0"}
+    description:
+      zh-CN: 适用于配有 NVIDIA GPU 且支持 CUDA 13.0 的通用 ARM64 设备。
+      en: For generic ARM64 devices with an NVIDIA GPU and CUDA 13.0 support.
     caps:
       arch: arm64
       software: [cuda]
@@ -53,11 +62,17 @@ profiles:
     conflicts: [amd, amd-without-cuda, arm-without-cuda, l4t, thor-spark]
   - name: arm-without-cuda
     title: {zh-CN: "ARM64 CPU", en: "ARM64 CPU"}
+    description:
+      zh-CN: 在 ARM64 设备上使用 CPU 执行工作流。
+      en: Runs workflows on the CPU on ARM64 devices.
     caps:
       arch: arm64
     conflicts: [amd, amd-without-cuda, arm, l4t, thor-spark]
   - name: l4t
     title: {zh-CN: "ARM64 Jetson Orin / L4T", en: "ARM64 Jetson Orin / L4T"}
+    description:
+      zh-CN: 适用于运行 L4T 的 Jetson Orin 设备。
+      en: For Jetson Orin devices running L4T.
     caps:
       arch: arm64
       software: [cuda]
@@ -66,6 +81,9 @@ profiles:
     conflicts: [amd, amd-without-cuda, arm, arm-without-cuda, thor-spark]
   - name: thor-spark
     title: {zh-CN: "ARM64 Jetson Thor / DGX Spark", en: "ARM64 Jetson Thor / DGX Spark"}
+    description:
+      zh-CN: 适用于支持 CUDA 13.0 的 Jetson Thor 和 DGX Spark。
+      en: For Jetson Thor and DGX Spark devices with CUDA 13.0 support.
     caps:
       arch: arm64
       software: [cuda]

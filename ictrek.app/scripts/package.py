@@ -168,6 +168,13 @@ def package(version: str, stage: Path) -> Path:
     if manifest.get("require-profiles") is not True or {p["name"] for p in manifest["profiles"]} != expected_profiles:
         raise RuntimeError("mismatched manifest profiles")
     for profile in manifest["profiles"]:
+        for field in ("title", "description"):
+            localized = profile.get(field)
+            if not isinstance(localized, dict) or not all(
+                isinstance(localized.get(language), str) and localized[language].strip()
+                for language in ("zh-CN", "en")
+            ):
+                raise RuntimeError(f"{profile['name']} must provide a Chinese and English {field}")
         if set(profile.get("conflicts", [])) != expected_profiles - {profile["name"]}:
             raise RuntimeError("profile conflicts must enforce single selection")
     if {tuple(service["profiles"]) for service in compose["services"].values()} != {(p,) for p in expected_profiles}:
