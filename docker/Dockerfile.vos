@@ -44,8 +44,8 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_BREAK_SYSTEM_PACKAGES=1 \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libgl1 libegl1 libglib2.0-0 libgomp1 && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt ./
-RUN PIP_CONFIG_FILE=/dev/null PIP_EXTRA_INDEX_URL= python3 -m pip install --timeout 120 --no-cache-dir --index-url https://pypi.org/simple -r requirements.txt && python3 -m pip check
+COPY requirements.txt docker/check_dependencies.py ./
+RUN PIP_CONFIG_FILE=/dev/null PIP_EXTRA_INDEX_URL= python3 -m pip install --timeout 120 --no-cache-dir --index-url https://pypi.org/simple -r requirements.txt && python3 check_dependencies.py
 COPY . .
 EXPOSE 8188
 ENTRYPOINT ["python3", "vos/gateway.py"]

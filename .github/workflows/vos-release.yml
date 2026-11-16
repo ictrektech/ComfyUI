@@ -18,7 +18,6 @@ jobs:
           VERSION="${GITHUB_REF_NAME#vos-comfyui-v}"
           python3 ictrek.app/scripts/vos_version.py check "$VERSION"
           [[ "$(tr -d '[:space:]' < ictrek.app/VERSION)" == "$VERSION" ]]
-          echo "COMFYUI_SOURCE_REVISION=$(git rev-parse --short=12 HEAD^)" >> "$GITHUB_ENV"
           echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "COMFYUI_PACKAGE_DIR=$HOME/dev/build/ComfyUI/ictrek.app" >> "$GITHUB_ENV"
       - name: Write Feishu credentials

@@ -76,7 +76,7 @@ class Feishu:
         response = request("GET", f"{self.base}/v3/spreadsheets/{SPREADSHEET}/sheets/query", self.token)
         self.sheets = {row["title"]: row["sheet_id"] for row in response["data"]["sheets"]}
 
-    def release_image(self, title: str, revision: str) -> str:
+    def release_image(self, title: str) -> str:
         sheet_id = self.sheets[title]
         response = request("GET", f"{self.base}/v2/spreadsheets/{SPREADSHEET}/values/{sheet_id}!A1:ZZ2", self.token)
         rows = response.get("data", {}).get("valueRange", {}).get("values", [])
@@ -94,9 +94,9 @@ class Feishu:
             self.token,
         )
         values = response.get("data", {}).get("valueRange", {}).get("values", [])
-        tag = next((cell_text(row[0]) for row in values if row and cell_text(row[0]).endswith("_" + revision)), "")
+        tag = next((cell_text(row[0]) for row in values if row and cell_text(row[0])), "")
         if not tag:
-            raise RuntimeError(f"comfyui tag for source {revision} missing from {title}")
+            raise RuntimeError(f"Published comfyui tag missing from {title}")
         return f"{repository or REPOSITORY}:{tag}"
 
 
@@ -201,10 +201,7 @@ def package(version: str, stage: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", default=os.getenv("PACKAGE_VERSION", ""))
-    parser.add_argument("--source", default=os.getenv("COMFYUI_SOURCE_REVISION", ""))
     args = parser.parse_args()
-    if not re.fullmatch(r"[0-9a-f]{7,40}", args.source):
-        parser.error("--source must be the revision that was used to build the service images")
     version = args.version or (ROOT / "VERSION").read_text().strip()
     from vos_version import UPSTREAM_VERSION, split_version
 
@@ -217,7 +214,7 @@ def main() -> None:
         errors = []
         for sheet in sheets:
             try:
-                images[variable] = feishu.release_image(sheet, args.source)
+                images[variable] = feishu.release_image(sheet)
             except Exception as exc:
                 errors.append(str(exc))
                 continue
