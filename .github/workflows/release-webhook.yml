@@ -6,6 +6,7 @@ on:
 
 jobs:
   send-webhook:
+    if: github.repository == 'Comfy-Org/ComfyUI'
     runs-on: ubuntu-latest
     env:
       DESKTOP_REPO_DISPATCH_TOKEN: ${{ secrets.DESKTOP_REPO_DISPATCH_TOKEN }}

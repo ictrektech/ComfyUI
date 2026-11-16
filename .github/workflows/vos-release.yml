@@ -67,8 +67,13 @@ jobs:
             git tag "v${PACKAGE_VERSION}" "$GITHUB_SHA"
             git push origin "v${PACKAGE_VERSION}"
           fi
-          gh release create "v${PACKAGE_VERSION}" "$COMFYUI_PACKAGE_DIR/comfyui_${PACKAGE_VERSION}_pull.tar" \
-            --verify-tag --latest --title "v${PACKAGE_VERSION}" --notes-file "$HOME/dev/build/ComfyUI/release-notes.md"
+          ASSET="comfyui_${PACKAGE_VERSION}_pull.tar"
+          if gh release view "v${PACKAGE_VERSION}" >/dev/null 2>&1; then
+            gh release download "v${PACKAGE_VERSION}" --pattern "$ASSET" --dir "$COMFYUI_PACKAGE_DIR" --clobber
+          else
+            gh release create "v${PACKAGE_VERSION}" "$COMFYUI_PACKAGE_DIR/$ASSET" \
+              --verify-tag --latest --title "v${PACKAGE_VERSION}" --notes-file "$HOME/dev/build/ComfyUI/release-notes.md"
+          fi
       - name: Open approved App Store tunnel
         env:
           APPSTORE_IP: ${{ secrets.APPSTORE_IP }}
