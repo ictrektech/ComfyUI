@@ -9,6 +9,7 @@ import re
 import secrets
 import signal
 import sqlite3
+import stat
 import sys
 import time
 from dataclasses import dataclass
@@ -42,6 +43,19 @@ HOP = frozenset({"connection", "keep-alive", "proxy-authenticate", "proxy-author
 
 def workspace_scope(subject):
     return hashlib.sha256(("comfyui-workspace:" + subject).encode()).hexdigest()[:32]
+
+
+def cuda_device_groups():
+    groups = set()
+    for pattern in ("nvmap", "nvidia*", "dri/renderD*"):
+        for path in Path("/dev").glob(pattern):
+            try:
+                node = path.stat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISCHR(node.st_mode) and node.st_gid and node.st_mode & stat.S_IRGRP:
+                groups.add(node.st_gid)
+    return sorted(groups)
 
 
 def token_payload(token):
@@ -232,14 +246,16 @@ class Gateway:
                        XDG_CACHE_HOME=str(workspace / ".cache"), TMPDIR=str(workspace / "tmp"),
                        TORCHINDUCTOR_CACHE_DIR=str(workspace / ".cache" / "torchinductor"),
                        PYTHONDONTWRITEBYTECODE="1")
-            flags = ["--cpu"] if os.getenv("COMFYUI_DEVICE", "cpu") == "cpu" else []
-            if os.getenv("COMFYUI_DEVICE") == "l4t":
+            device = os.getenv("COMFYUI_DEVICE", "cpu")
+            groups = cuda_device_groups() if device == "cuda" else []
+            flags = ["--cpu"] if device == "cpu" else []
+            if device == "l4t":
                 flags += ["--disable-dynamic-vram", "--disable-pinned-memory"]
             worker = Worker(await asyncio.create_subprocess_exec(
                 sys.executable, str(ROOT / "main.py"), "--listen", "127.0.0.1", "--port", str(port),
                 "--base-directory", str(workspace), "--models-directory", str(PROJECTION),
                 "--offline", "--disable-all-custom-nodes", "--disable-auto-launch", *flags,
-                cwd=workspace, env=env, user=uid, group=uid, extra_groups=[], umask=0o077,
+                cwd=workspace, env=env, user=uid, group=uid, extra_groups=groups, umask=0o077,
                 start_new_session=True), port, time.monotonic(), inflight=1)
             self.workers[login.subject] = worker
             return worker
