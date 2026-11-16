@@ -3,10 +3,20 @@ ARG L4T_BASE=swr.cn-southwest-2.myhuaweicloud.com/ictrek/pytorch_py312:jet_2.7.0
 ARG TORCH_RUNTIME=wheel
 
 FROM ${L4T_BASE} AS l4t
+# The vendor base's httpcore 1.0.8 pins an older h11 than current ComfyUI dependencies.
+RUN PIP_CONFIG_FILE=/dev/null PIP_EXTRA_INDEX_URL= python3 -m pip install --no-cache-dir \
+    --index-url https://pypi.org/simple httpcore==1.0.9
 FROM ${PYTHON_BASE} AS wheel
 ARG TORCH_INDEX=cpu
 RUN python3 -m pip install --no-cache-dir torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 \
     --index-url "https://download.pytorch.org/whl/${TORCH_INDEX}"
+
+FROM ${PYTHON_BASE} AS cached-wheel
+ARG TORCH_INDEX
+ARG TORCH_WHEEL
+RUN --mount=type=bind,from=torch_wheels,target=/wheelhouse \
+    python3 -m pip install --timeout 120 --no-cache-dir "/wheelhouse/${TORCH_WHEEL}" \
+    torchvision==0.25.0 torchaudio==2.10.0 --index-url "https://download.pytorch.org/whl/${TORCH_INDEX}"
 
 FROM ${TORCH_RUNTIME}
 ARG TORCH_RUNTIME

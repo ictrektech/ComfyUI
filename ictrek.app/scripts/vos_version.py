@@ -36,7 +36,7 @@ def main():
     if not re.fullmatch(UPSTREAM_PATTERN, UPSTREAM_VERSION):
         raise ValueError(f"invalid upstream version: {UPSTREAM_VERSION}")
     if sys.argv[1:] == ["next"]:
-        print(next_version((APP_DIR / "VERSION").read_text().strip(), UPSTREAM_VERSION))
+        sys.stdout.write(next_version((APP_DIR / "VERSION").read_text().strip(), UPSTREAM_VERSION) + "\n")
     elif len(sys.argv) == 3 and sys.argv[1] == "check":
         prefix, _ = split_version(sys.argv[2])
         if prefix != UPSTREAM_VERSION:

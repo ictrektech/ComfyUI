@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -67,8 +68,10 @@ def main():
         request(prefix + '/values', auth, {'valueRange': {'range': area, 'values': [[value]]}}, 'PUT')
 
     def text(cell):
-        if isinstance(cell, list): return ''.join(text(x) for x in cell)
-        if isinstance(cell, dict): return str(cell.get('text') or cell.get('link') or '')
+        if isinstance(cell, list):
+            return ''.join(text(x) for x in cell)
+        if isinstance(cell, dict):
+            return str(cell.get('text') or cell.get('link') or '')
         return str(cell or '')
 
     rows = values('A1:ZZ2')
@@ -85,7 +88,7 @@ def main():
         tag = next((text(row[0]) for row in values(f'{col}4:{col}2000') if row and text(row[0])), '')
         if not tag:
             raise SystemExit('No published component tag found')
-        print(repository + ':' + tag)
+        sys.stdout.write(f"{repository}:{tag}\n")
         return
     if not args.tag:
         raise SystemExit('--tag is required when recording an image')
@@ -115,7 +118,7 @@ def main():
     assert text(values(f'{col}1:{col}1')[0][0]) == args.component
     assert text(values(f'{col}2:{col}2')[0][0]) == args.repository
     assert text(values(f'{col}{row}:{col}{row}')[0][0]) == args.tag
-    print(f'{args.sheet}: {args.component} -> {args.repository}:{args.tag}')
+    sys.stdout.write(f"{args.sheet}: {args.component} -> {args.repository}:{args.tag}\n")
 
 
 if __name__ == '__main__':

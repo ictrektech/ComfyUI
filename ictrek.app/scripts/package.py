@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -111,7 +112,7 @@ def scheduler_release() -> str:
     tag = release.get("tag_name", "")
     if release.get("draft") or release.get("prerelease") or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
         raise RuntimeError("No verified stable V-Scheduler release")
-    print(f"V-Scheduler latest published dependency: {tag}")
+    sys.stdout.write(f"V-Scheduler latest published dependency: {tag}\n")
     return f">={tag[1:]}"
 
 
@@ -209,8 +210,7 @@ def main() -> None:
 
     if split_version(version)[0] != UPSTREAM_VERSION:
         raise SystemExit(f"VOS version must follow upstream {UPSTREAM_VERSION}")
-    print(f"[INFO] Package version: {version}")
-    print("[INFO] Image source: pull")
+    sys.stdout.write(f"[INFO] Package version: {version}\n[INFO] Image source: pull\n")
     feishu = Feishu()
     images = {}
     for variable, sheets in PROFILES.items():
@@ -222,7 +222,7 @@ def main() -> None:
                 errors.append(str(exc))
                 continue
             profile = variable.removeprefix("COMFYUI_").removesuffix("_IMAGE").lower().replace("_", "-")
-            print(f"[INFO] {profile} ({sheet}) comfyui -> {images[variable]}")
+            sys.stdout.write(f"[INFO] {profile} ({sheet}) comfyui -> {images[variable]}\n")
             break
         if variable not in images:
             raise RuntimeError("; ".join(errors))
@@ -231,7 +231,7 @@ def main() -> None:
         shutil.rmtree(stage)
     render(version, images, stage, scheduler_release())
     output = package(version, stage)
-    print(output)
+    sys.stdout.write(f"{output}\n")
 
 
 if __name__ == "__main__":

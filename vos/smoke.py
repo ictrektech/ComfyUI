@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import os
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -107,7 +108,8 @@ async def main():
                 assert response.status == 200 and await response.json() is None
             async with client.get(url("api/view"), params=image, headers=bob) as response:
                 assert response.status == 404
-            print("VOS smoke passed: authentication, editor, settings, WebSocket, input upload, execution and account isolation")
+            sys.stdout.write("VOS smoke passed: authentication, editor, settings, WebSocket, "
+                             "input upload, execution and account isolation\n")
 
 
 if __name__ == "__main__":

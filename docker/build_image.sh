@@ -31,9 +31,25 @@ image="$repository:$tag"
 build="$HOME/dev/build/ComfyUI"
 mkdir -p "$build/tmp"
 export TMPDIR="$build/tmp" PYTHONDONTWRITEBYTECODE=1
+wheel_args=()
+wheel_dir="$build/wheels/$index"
+wheel="torch-2.10.0+$index-cp312-cp312-manylinux_2_28_$(uname -m).whl"
+if [[ "$runtime" == wheel && -f "$wheel_dir/$wheel" ]]; then
+    # Hashes from the official PyTorch index for the exact platform wheel.
+    case "$index:$arch" in
+      cpu:amd64)   sha=ee40b8a4b4b2cf0670c6fd4f35a7ef23871af956fecb238fbf5da15a72650b1d ;;
+      cpu:arm64)   sha=179451716487f8cb09b56459667fa1f5c4c0946c1e75fbeae77cfc40a5768d87 ;;
+      cu128:amd64) sha=628e89bd5110ced7debee2a57c69959725b7fbc64eab81a39dd70e46c7e28ba5 ;;
+      cu130:arm64) sha=4fc8f67637f4c92b989a07d80ffe755e79a3510ca02ebf23ce66396fb277c88d ;;
+      *) exit 1 ;;
+    esac
+    printf '%s  %s\n' "$sha" "$wheel_dir/$wheel" | sha256sum --check --status
+    runtime=cached-wheel
+    wheel_args=(--build-context "torch_wheels=$wheel_dir" --build-arg "TORCH_WHEEL=$wheel")
+fi
 docker buildx build --builder default --load --provenance=false --sbom=false --platform "linux/$arch" \
     --build-arg "PYTHON_BASE=$base" --build-arg "TORCH_RUNTIME=$runtime" --build-arg "TORCH_INDEX=$index" \
-    -f "$root/docker/Dockerfile.vos" -t "$image" "$root"
+    "${wheel_args[@]}" -f "$root/docker/Dockerfile.vos" -t "$image" "$root"
 device=cuda
 docker_args=()
 if [[ "$index" == cpu ]]; then
