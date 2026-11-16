@@ -56,6 +56,21 @@ if [[ "$runtime" == wheel && -f "$wheel_dir/$wheel" ]]; then
         printf '%s  %s\n' "$sha" "$wheel_dir/$triton" | sha256sum --check --status
         runtime=cached-cuda-wheel
         wheel_args+=(--build-arg "TRITON_WHEEL=$triton")
+        vision="torchvision-0.25.0+$index-cp312-cp312-manylinux_2_28_$machine.whl"
+        audio="torchaudio-2.10.0+$index-cp312-cp312-manylinux_2_28_$machine.whl"
+        if [[ -f "$wheel_dir/$vision" && -f "$wheel_dir/$audio" ]]; then
+            case "$arch" in
+              amd64)
+                vision_sha=1255a0ca2bf987acf9f103b96c5c4cfe3415fc4a1eef17fa08af527a04a4f573
+                audio_sha=d26b91a173cee6db9abff68b48d64236950ffc5628d06448ecdd7ac56841e10a ;;
+              arm64)
+                vision_sha=3646e6c8fa5066da392d0ff13002cc683301386fe1933f8f1432fc5292e5d288
+                audio_sha=f04907b7a710cd612adb63db3a2dac6265e4679686fb2b1c9e1b70562b1bda29 ;;
+            esac
+            printf '%s  %s\n' "$vision_sha" "$wheel_dir/$vision" "$audio_sha" "$wheel_dir/$audio" | sha256sum --check --status
+            runtime=cached-cuda-complete
+            wheel_args+=(--build-arg "VISION_WHEEL=$vision" --build-arg "AUDIO_WHEEL=$audio")
+        fi
     fi
 fi
 docker buildx build --builder default --load --provenance=false --sbom=false --platform "linux/$arch" \

@@ -26,6 +26,17 @@ RUN --mount=type=bind,from=torch_wheels,target=/wheelhouse \
     python3 -m pip install --timeout 120 --no-cache-dir "/wheelhouse/${TORCH_WHEEL}" "/wheelhouse/${TRITON_WHEEL}" \
     torchvision==0.25.0 torchaudio==2.10.0 --index-url "https://download.pytorch.org/whl/${TORCH_INDEX}"
 
+FROM ${PYTHON_BASE} AS cached-cuda-complete
+ARG TORCH_INDEX
+ARG TORCH_WHEEL
+ARG TRITON_WHEEL
+ARG VISION_WHEEL
+ARG AUDIO_WHEEL
+RUN --mount=type=bind,from=torch_wheels,target=/wheelhouse \
+    python3 -m pip install --timeout 120 --no-cache-dir "/wheelhouse/${TORCH_WHEEL}" "/wheelhouse/${TRITON_WHEEL}" \
+    "/wheelhouse/${VISION_WHEEL}" "/wheelhouse/${AUDIO_WHEEL}" \
+    --index-url "https://download.pytorch.org/whl/${TORCH_INDEX}"
+
 FROM ${TORCH_RUNTIME}
 ARG TORCH_RUNTIME
 WORKDIR /opt/comfyui
