@@ -45,11 +45,12 @@ def infer_category(file):
     return None
 
 
-def catalog_links(models, shared):
+def catalog_links(models, shared, aliases=()):
     export = (shared / "export").resolve()
     if export != shared / "export":
         return {}
     result = {}
+    roots = {}
     for model in models:
         if not isinstance(model, dict) or model.get("status") != "ready" or model.get("source") not in {"hf", "ms"}:
             continue
@@ -62,6 +63,7 @@ def catalog_links(models, shared):
         root = (export / relative).resolve()
         if not root.is_relative_to(export / model["source"]) or not root.is_dir():
             continue
+        roots[f"{relative.parts[0]}://{relative.parts[1]}/{relative.parts[2]}".lower()] = root
         for file in root.rglob("*.safetensors"):
             resolved = file.resolve()
             if not resolved.is_relative_to(root) or not resolved.is_file():
@@ -76,12 +78,17 @@ def catalog_links(models, shared):
                 continue
             name = relative.parts[:-1] if relative.name == "current" else relative.parts
             result[Path(category, *name, *parts)] = resolved
+    for category, name, repo, file in aliases:
+        if root := roots.get(repo.lower()):
+            target = (root / file).resolve()
+            if target.is_relative_to(root) and target.is_file():
+                result.setdefault(Path(category, name), target)
     return result
 
 
 def sync_links(projection, links):
-    for path in projection.rglob("*.safetensors"):
-        if path.is_symlink() and path.relative_to(projection) not in links:
+    for path in projection.rglob("*"):
+        if path.suffix in {".safetensors", ".sft"} and path.is_symlink() and path.relative_to(projection) not in links:
             path.unlink()
     for name, target in links.items():
         link = projection / name
@@ -94,7 +101,7 @@ def sync_links(projection, links):
         pending.replace(link)
 
 
-async def refresh(client, url, shared, projection):
+async def refresh(client, url, shared, projection, aliases=()):
     try:
         async with client.get(url + "/api/v1/models?status=ready", allow_redirects=False,
                               timeout=aiohttp.ClientTimeout(total=8)) as response:
@@ -102,6 +109,7 @@ async def refresh(client, url, shared, projection):
             models = await response.json()
         if not isinstance(models, list):
             raise ValueError("expected a Model Hub model list")
-        await asyncio.to_thread(lambda: sync_links(projection, catalog_links(models, shared)))
+        await asyncio.to_thread(lambda: sync_links(projection, catalog_links(models, shared, aliases)))
+        return True
     except (aiohttp.ClientError, OSError, RuntimeError, TimeoutError, ValueError):
         logging.warning("V-Scheduler model refresh failed; keeping the last model index")

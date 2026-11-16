@@ -21,6 +21,8 @@ from multidict import CIMultiDict
 from yarl import URL
 
 import models
+from downloads import Downloads
+from patch_frontend import DISPATCHER
 
 APP = "com.ictrek.comfyui"
 BASE = f"/app/{APP}/"
@@ -98,6 +100,7 @@ class Gateway:
         self.db = sqlite3.connect(DATA / "accounts.sqlite")
         os.chmod(DATA / "accounts.sqlite", 0o600)
         self.db.execute("CREATE TABLE IF NOT EXISTS accounts (uid INTEGER PRIMARY KEY, subject TEXT UNIQUE)")
+        self.downloads = Downloads(self.db, HUB, SHARED, PROJECTION)
 
     async def verify(self, token):
         if not re.fullmatch(r"[A-Za-z0-9_.~+/=-]{1,16384}", token):
@@ -285,6 +288,17 @@ class Gateway:
         return web.json_response({"editor_path": f"{EDITOR}workspace/{workspace_scope(login.subject)}/"},
                                  headers={"Cache-Control": "no-store"})
 
+    async def model_downloads(self, request):
+        site = request.headers.get("Sec-Fetch-Site")
+        if site not in (None, "same-origin") or (
+            site is None and not request.headers.get("Authorization", "").startswith("Bearer ")
+        ):
+            raise web.HTTPForbidden()
+        owner = workspace_scope((await self.authenticate(request)).subject)
+        if request.method == "POST":
+            return await self.downloads.start(request, owner, self.http)
+        return await self.downloads.status(request, owner, self.http)
+
     async def wait_worker(self, login):
         worker = await self.worker(login)
         try:
@@ -341,14 +355,18 @@ class Gateway:
                                          allow_redirects=False) as upstream:
                 headers = filtered(upstream.headers, HOP | {"set-cookie"})
                 if path == "index.html" and upstream.status == 200 and request.method == "GET":
+                    asset = f"./assets/{DISPATCHER}"
+                    import_map = json.dumps({"imports": {asset: asset + "?vos-model-downloads"}})
                     page = (await upstream.text()).replace(
-                        "<head>", f'<head><script src="{BASE}storage.js" data-workspace="{scope}"></script>', 1
-                    ).replace("</head>", f'<script src="{BASE}bridge.js" defer></script></head>', 1)
+                        "<head>", f'<head><script type="importmap">{import_map}</script>'
+                        f'<script src="{BASE}storage.js" data-workspace="{scope}"></script>', 1
+                    ).replace("</head>", f'<script src="{BASE}bridge.js" defer></script>'
+                              f'<script src="{BASE}model-downloads.js"></script></head>', 1)
                     headers.popall("Content-Length", None)
                     headers["Cache-Control"] = "no-store"
                     headers["Content-Type"] = "text/html; charset=utf-8"
                     return web.Response(text=page, status=200, headers=headers)
-                if path.split("/", 1)[0] not in STATIC:
+                if path.split("/", 1)[0] not in STATIC or path == f"assets/{DISPATCHER}":
                     headers["Cache-Control"] = "private, no-store"
                 response = web.StreamResponse(status=upstream.status, headers=headers)
                 await response.prepare(request)
@@ -394,7 +412,7 @@ class Gateway:
                                          cookie_jar=aiohttp.DummyCookieJar()) as self.http:
             async def maintain():
                 while True:
-                    await models.refresh(self.http, HUB, SHARED, PROJECTION)
+                    await self.downloads.refresh(self.http)
                     async with self.lock:
                         for subject, worker in list(self.workers.items()):
                             if worker.process.returncode is not None or (
@@ -425,7 +443,7 @@ def static(filename):
 
 def app():
     gateway = Gateway()
-    app = web.Application()
+    app = web.Application(client_max_size=64 * 1024)
     app.cleanup_ctx.append(gateway.background)
     async def health(request):
         return web.json_response({"status": "ok", "version": os.getenv("COMFYUI_VERSION", "dev")})
@@ -433,6 +451,7 @@ def app():
     app.router.add_get(BASE, static("index.html"))
     app.router.add_get(BASE + "bridge.js", static("bridge.js"))
     app.router.add_get(BASE + "storage.js", static("storage.js"))
+    app.router.add_get(BASE + "model-downloads.js", static("model-downloads.js"))
     app.router.add_get(BASE + "guide", static("guide.html"))
     async def specification(request):
         return web.FileResponse(ROOT / "openapi.yaml", headers={"Content-Type": "text/yaml; charset=utf-8"})
@@ -440,6 +459,8 @@ def app():
     app.router.add_post(BASE + "session", gateway.session)
     app.router.add_delete(BASE + "session", gateway.session)
     app.router.add_post(BASE + "prepare", gateway.open_editor)
+    app.router.add_post(BASE + "model-downloads", gateway.model_downloads)
+    app.router.add_get(BASE + "model-downloads/{batch:[0-9a-f]{32}}", gateway.model_downloads)
     app.router.add_route("*", EDITOR + "workspace/{scope:[0-9a-f]{32}}/{path:.*}", gateway.proxy)
     app.router.add_route("*", EDITOR + "{path:.*}", gateway.proxy)
     return app

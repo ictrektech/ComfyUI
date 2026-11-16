@@ -47,5 +47,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt docker/check_dependencies.py ./
 RUN PIP_CONFIG_FILE=/dev/null PIP_EXTRA_INDEX_URL= python3 -m pip install --timeout 120 --no-cache-dir --index-url https://pypi.org/simple -r requirements.txt && python3 check_dependencies.py
 COPY . .
+RUN python3 vos/patch_frontend.py
 EXPOSE 8188
 ENTRYPOINT ["python3", "vos/gateway.py"]

@@ -33,11 +33,38 @@ async def main():
     fake_vos = web.Application()
     fake_vos.router.add_get("/userinfo", userinfo)
 
+    selected_files = None
+
     async def catalog(request):
-        return web.json_response([{"status": "ready", "source": "hf",
-                                   "access_path": "/data/export/hf/fixtures/models/current"}])
+        records = [{"status": "ready", "source": "hf",
+                    "access_path": "/data/export/hf/fixtures/models/current"}]
+        if selected_files:
+            records.append({"status": "ready", "source": "hf",
+                            "access_path": "/data/export/hf/fixtures/downloads/current"})
+        return web.json_response(records)
+
+    async def local_files(request):
+        raise web.HTTPNotFound()
+
+    async def pull(request):
+        nonlocal selected_files
+        body = await request.json()
+        assert body == {"source": "hf", "model_id": "hf://fixtures/downloads",
+                        "files": ["remote/a.safetensors", "remote/b.safetensors"], "append": True}
+        selected_files = body["files"]
+        for file in selected_files:
+            destination = root / "modelhub/export/hf/fixtures/downloads/current" / file
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text("fixture used only for the download and path contract")
+        return web.json_response({"task_id": "task-download"})
+
+    async def task(request):
+        return web.json_response({"phase": "READY"})
 
     fake_vos.router.add_get("/api/v1/models", catalog)
+    fake_vos.router.add_get("/api/v1/models/files", local_files)
+    fake_vos.router.add_post("/api/v1/models/pull", pull)
+    fake_vos.router.add_get("/api/v1/tasks/detail/task-download", task)
     async with TestServer(fake_vos) as platform:
         os.environ["VOS_USERINFO_URL"] = str(platform.make_url("/userinfo"))
         os.environ["COMFYUI_MODEL_HUB_URL"] = str(platform.make_url(""))
@@ -73,6 +100,31 @@ async def main():
                 assert response.status == 200 and isinstance(await response.json(), dict)
             async with client.get(url("api/models/checkpoints"), headers=alice) as response:
                 assert response.status == 200 and await response.json() == ["hf/fixtures/models/checkpoints/smoke.safetensors"]
+            download = application.make_url(gateway.BASE + "model-downloads")
+            model_requests = [
+                {"directory": directory, "name": name,
+                 "url": f"https://huggingface.co/fixtures/downloads/resolve/main/remote/{filename}"}
+                for directory, name, filename in (
+                    ("vae", "nested/a.safetensors", "a.safetensors"),
+                    ("unet", "b.safetensors", "b.safetensors"),
+                )
+            ]
+            async with client.post(download, headers=alice, json={"models": [
+                {**model_requests[0], "name": "../a.safetensors"},
+            ]}) as response:
+                assert response.status == 400
+            async with client.post(download, headers=alice, json={"models": model_requests}) as response:
+                assert response.status == 202, await response.text()
+                batch = (await response.json())["id"]
+            async with client.get(str(download) + "/" + batch, headers=bob) as response:
+                assert response.status == 404
+            async with client.get(str(download) + "/" + batch, headers=alice) as response:
+                assert response.status == 200, await response.text()
+                entries = (await response.json())["models"]
+                assert len(entries) == 2 and all(entry["status"] == "ready" for entry in entries), entries
+            for category, name in (("vae", "nested/a.safetensors"), ("diffusion_models", "b.safetensors")):
+                async with client.get(url("api/models/" + category), headers=alice) as response:
+                    assert response.status == 200 and name in await response.json()
             async with client.get(url("api/object_info/IdeogramV4"), headers=alice) as response:
                 assert response.status == 200 and (await response.json())["IdeogramV4"]["api_node"] is True
             async with client.ws_connect(url("ws"), headers=alice) as socket:
@@ -111,7 +163,8 @@ async def main():
             async with client.get(url("api/view"), params=image, headers=bob) as response:
                 assert response.status == 404
             sys.stdout.write("VOS smoke passed: authentication, editor, settings, WebSocket, "
-                             "partner node discovery, local execution without Comfy credentials, and account isolation\n")
+                             "partner node discovery, shared downloads with exact workflow paths, "
+                             "local execution without Comfy credentials, and account isolation\n")
 
 
 if __name__ == "__main__":
