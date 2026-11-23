@@ -3,6 +3,11 @@ x-comfyui-env: &comfyui-env
   COMFYUI_MAX_WORKERS: "${COMFYUI_MAX_WORKERS:-1}"
   VOS_USERINFO_URL: http://${VOS_HOST_GW_IP}:${VOS_API_GW_PORT_INTERNAL}/v1000/oauth2/userinfo
   COMFYUI_MODEL_HUB_URL: http://v-scheduler-model-hub:6005
+  IMAGE_STUDIO_API_URL: "${IMAGE_STUDIO_API_URL:-http://image-studio-backend:5000}"
+  IMAGE_STUDIO_API_TOKEN: "${IMAGE_STUDIO_API_TOKEN:-}"
+  IMAGE_STUDIO_TIMEOUT_SECONDS: "${IMAGE_STUDIO_TIMEOUT_SECONDS:-900}"
+  IMAGE_STUDIO_POLL_SECONDS: "${IMAGE_STUDIO_POLL_SECONDS:-2}"
+  IMAGE_STUDIO_MODEL_KEYS: "${IMAGE_STUDIO_MODEL_KEYS:-sd-turbo,sd15,sd2,sdxl}"
 
 x-comfyui: &comfyui
   restart: unless-stopped

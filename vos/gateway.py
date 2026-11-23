@@ -261,6 +261,7 @@ class Gateway:
                        XDG_CACHE_HOME=str(workspace / ".cache"), TMPDIR=str(workspace / "tmp"),
                        TORCHINDUCTOR_CACHE_DIR=str(workspace / ".cache" / "torchinductor"),
                        VOS_COMFYUI_BUNDLED_NODES=str(VOS / "vendor"),
+                       COMFYUI_VOS_SUB=login.subject,
                        PYTHONDONTWRITEBYTECODE="1")
             device = os.getenv("COMFYUI_DEVICE", "cpu")
             groups = shared_model_groups()

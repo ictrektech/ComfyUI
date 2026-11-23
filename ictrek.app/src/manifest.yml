@@ -25,6 +25,9 @@ dependencies:
     - id: com.ictrek.v-scheduler
       version: __V_SCHEDULER_DEPENDENCY__
       optional: false
+    - id: com.ictrek.image-studio
+      version: latest
+      optional: true
 storage:
   directories:
     - path: data
