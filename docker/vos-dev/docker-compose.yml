@@ -1,0 +1,52 @@
+# VOS live debugging for ComfyUI, driven by docker/vos-dev/vos-dev.sh.
+#
+# The dev container runs the installed application's own image, so Python dependencies,
+# the patched frontend package and GPU support match it, and mounts this checkout over
+# /src. The image entrypoint python3 vos/gateway.py resolves inside /src.
+#
+# The dev container keeps its own /data: the gateway owns accounts.sqlite and maps each
+# VOS account to a workspace uid, so a second instance needs its own directory. The
+# shared model directory is mounted read-only from the installed app and downloads go
+# through V-Scheduler, so both instances see the same weights.
+name: comfyui-vos-dev
+
+services:
+  comfyui-dev:
+    image: ${COMFYUI_DEV_BASE_IMAGE:?run make vos-dev}
+    container_name: comfyui-vos-dev
+    init: true
+    stop_grace_period: 30s
+    working_dir: /src
+    runtime: ${COMFYUI_DEV_RUNTIME:-runc}
+    # The gateway chowns each workspace to uid 20000+ and starts the worker as that user.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
+    ports:
+      - "${VOS_DEV_PORT:-38093}:8188"
+    volumes:
+      - ${COMFYUI_DEV_SOURCE:?run make vos-dev}:/src
+      - ${COMFYUI_DEV_VENDOR:?run make vos-dev}:/src/vos/vendor:ro
+      - ${COMFYUI_DEV_DATA:?run make vos-dev}:/data
+      - ${COMFYUI_DEV_MODEL_HUB:?run make vos-dev}:/modelhub:ro
+    env_file:
+      - ${COMFYUI_DEV_ENV_FILE:?run make vos-dev}
+    environment:
+      COMFYUI_DEVICE: ${COMFYUI_DEV_DEVICE:-cpu}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      vos_default:
+        aliases: [comfyui-dev]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+networks:
+  vos_default:
+    external: true

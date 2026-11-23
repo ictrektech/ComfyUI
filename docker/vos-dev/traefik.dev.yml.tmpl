@@ -1,0 +1,21 @@
+# Written by docker/vos-dev/vos-dev.sh; removed on exit.
+# Priority 2000 outranks the installed app router, so platform traffic reaches the dev
+# container. The marker header tells dev traffic apart in the browser and in curl.
+http:
+  routers:
+    __APP_ID__-dev:
+      rule: "PathPrefix(`/app/__APP_ID__/`) || Path(`/app/__APP_ID__`)"
+      service: __APP_ID__-dev
+      priority: 2000
+      middlewares:
+        - __APP_ID__-dev-marker
+  middlewares:
+    __APP_ID__-dev-marker:
+      headers:
+        customResponseHeaders:
+          X-ComfyUI-Dev: "1"
+  services:
+    __APP_ID__-dev:
+      loadBalancer:
+        servers:
+          - url: "http://__HOST__:__PORT__"
