@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import time
 import urllib.request
 from functools import lru_cache
@@ -37,29 +38,42 @@ API_URL = (os.getenv("IMAGE_STUDIO_API_URL") or "http://image-studio-backend:500
 VOS_SUB = os.getenv("IMAGE_STUDIO_VOS_SUB") or os.getenv("COMFYUI_VOS_SUB", "")
 TIMEOUT_SECONDS = env_number("IMAGE_STUDIO_TIMEOUT_SECONDS", "900", int)
 POLL_SECONDS = env_number("IMAGE_STUDIO_POLL_SECONDS", "2", float)
-MODEL_KEYS = [item.strip() for item in os.getenv("IMAGE_STUDIO_MODEL_KEYS", "sd-turbo").split(",") if item.strip()]
+FALLBACK_MODEL_KEYS = ["sd-turbo"]
 SAMPLERS = ["euler_a", "euler", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2", "ipndm", "ipndm_v",
             "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s", "er_sde", "euler_cfg_pp",
             "euler_a_cfg_pp", "euler_ge", "dpm++2m_sde", "dpm++2m_sde_bt", "lms"]
 SCHEDULERS = ["", "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform", "simple", "smoothstep",
               "kl_optimal", "lcm", "bong_tangent", "ltx2", "logit_normal", "flux2", "flux", "beta", "normal"]
 PRIORITIES = ["background", "interactive", "high"]
+# Left at these values, the widget means "use the model family default"
+WIDGET_DEFAULTS = {"width": 512, "height": 512, "steps": 4, "cfg_scale": 1.0, "sampler": "euler_a"}
 
 
 @lru_cache(maxsize=1)
-def model_keys():
-    keys = MODEL_KEYS or ["sd-turbo"]
+def model_catalog():
+    """Ready Image Studio models keyed by model_key; empty when unreachable."""
     try:
         request = urllib.request.Request(API_URL + "/api/v1/models", headers=api_headers())
         with urllib.request.urlopen(request, timeout=2) as response:
             models = json.loads(response.read())
-        ready = [model["key"] for model in models
-                 if isinstance(model, dict) and model.get("key") and model.get("status") == "ready"]
-        if ready:
-            keys = ready
     except (OSError, ValueError):
-        pass
-    return keys
+        return {}
+    return {model["key"]: model for model in models
+            if isinstance(model, dict) and model.get("key") and model.get("status") == "ready"}
+
+
+def model_keys():
+    keys = [key for key, model in model_catalog().items()
+            if {"txt2img", "img2img"} & set(model.get("capabilities") or [])]
+    return keys or FALLBACK_MODEL_KEYS
+
+
+def apply_model_defaults(payload, model):
+    """Drop widget defaults the model family overrides, so Image Studio picks its own."""
+    defaults = (model.get("runtime") or {}).get("defaults") or {}
+    for field, value in WIDGET_DEFAULTS.items():
+        if field in defaults and payload.get(field) == value:
+            del payload[field]
 
 
 def header_value(text):
@@ -108,35 +122,45 @@ class ImageStudioGenerate(io.ComfyNode):
             node_id="ImageStudioGenerate",
             display_name="Image Studio Generate",
             category="image/Image Studio",
-            description="Generate images through the Image Studio app. Requires Image Studio; jobs queue through V-Scheduler.",
+            description="Generate images through the Image Studio app. Requires Image Studio; jobs queue through V-Scheduler. "
+                        "Unchanged size, steps, CFG and sampler follow the model family defaults.",
             inputs=[
                 io.String.Input("prompt", multiline=True, dynamic_prompts=True),
                 io.Combo.Input("model_key", options=keys, default=keys[0]),
                 io.Int.Input("width", default=512, min=256, max=2048, step=8),
                 io.Int.Input("height", default=512, min=256, max=2048, step=8),
-                io.Int.Input("steps", default=4, min=1, max=150),
-                io.Float.Input("cfg_scale", default=1.0, min=1.0, max=30.0, step=0.1),
-                io.Int.Input("seed", default=-1, min=-1, max=0xFFFFFFFFFFFFFFFF, control_after_generate=True),
+                io.Int.Input("steps", default=4, min=1, max=150, tooltip="The model family default replaces an unchanged 4."),
+                io.Float.Input("cfg_scale", default=1.0, min=1.0, max=30.0, step=0.1,
+                               tooltip="The model family default replaces an unchanged 1.0."),
+                io.Int.Input("seed", default=-1, min=-1, max=0xFFFFFFFFFFFFFFFF, control_after_generate=True,
+                             tooltip="-1 picks a random seed for this run and reports it on the seed output."),
                 io.Int.Input("batch_count", default=1, min=1, max=4),
                 io.String.Input("negative_prompt", default="", multiline=True, advanced=True),
                 io.String.Input("model_variant", default="", advanced=True),
-                io.Combo.Input("sampler", options=SAMPLERS, default="euler_a", advanced=True),
+                io.Combo.Input("sampler", options=SAMPLERS, default="euler_a", advanced=True,
+                               tooltip="The model family default replaces an unchanged euler_a."),
                 io.Combo.Input("scheduler", options=SCHEDULERS, default="", advanced=True,
                                tooltip="Empty means the model default."),
                 io.Int.Input("clip_skip", default=-1, min=-1, max=24, advanced=True),
                 io.Boolean.Input("hires", default=False, advanced=True),
                 io.Float.Input("hires_scale", default=2.0, min=1.0, max=8.0, step=0.1, advanced=True),
+                io.Int.Input("hires_steps", default=0, min=0, max=150, advanced=True,
+                             tooltip="Second-pass steps. 0 uses the model default."),
+                io.Float.Input("hires_denoising_strength", default=0.7, min=0.0, max=1.0, step=0.01, advanced=True),
                 io.Combo.Input("priority", options=PRIORITIES, default="background", advanced=True),
                 io.String.Input("extra_params", default="{}", multiline=True, advanced=True,
                                tooltip="JSON object merged into the Image Studio request."),
             ],
-            outputs=[io.Image.Output()],
+            outputs=[io.Image.Output(), io.Int.Output(display_name="seed")],
         )
 
     @classmethod
     async def execute(cls, prompt, model_key, width, height, steps, cfg_scale, seed, batch_count,
                       negative_prompt, model_variant, sampler, scheduler, clip_skip, hires, hires_scale,
-                      priority, extra_params):
+                      hires_steps, hires_denoising_strength, priority, extra_params):
+        model = model_catalog().get(model_key) or {}
+        if seed < 0:
+            seed = random.randint(0, 0xFFFFFFFF)
         payload = {
             "prompt": prompt,
             "negative_prompt": negative_prompt,
@@ -153,8 +177,11 @@ class ImageStudioGenerate(io.ComfyNode):
             "batch_count": batch_count,
             "hires": hires,
             "hires_scale": hires_scale,
+            "hires_steps": hires_steps,
+            "hires_denoising_strength": hires_denoising_strength,
             "scheduling": {"priority": priority},
         }
+        apply_model_defaults(payload, model)
         if extra_params.strip():
             try:
                 extra = json.loads(extra_params)
@@ -199,7 +226,7 @@ class ImageStudioGenerate(io.ComfyNode):
             finally:
                 if not completed:
                     await cls.cancel(session, job_id)
-        return io.NodeOutput(torch.cat(images, dim=0))
+        return io.NodeOutput(torch.cat(images, dim=0), seed)
 
     @classmethod
     async def cancel(cls, session, job_id):

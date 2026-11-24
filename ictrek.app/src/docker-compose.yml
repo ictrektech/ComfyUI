@@ -6,7 +6,6 @@ x-comfyui-env: &comfyui-env
   IMAGE_STUDIO_API_URL: "${IMAGE_STUDIO_API_URL:-http://image-studio-backend:5000}"
   IMAGE_STUDIO_TIMEOUT_SECONDS: "${IMAGE_STUDIO_TIMEOUT_SECONDS:-900}"
   IMAGE_STUDIO_POLL_SECONDS: "${IMAGE_STUDIO_POLL_SECONDS:-2}"
-  IMAGE_STUDIO_MODEL_KEYS: "${IMAGE_STUDIO_MODEL_KEYS:-sd-turbo}"
 
 x-comfyui: &comfyui
   restart: unless-stopped
