@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import time
+import urllib.request
+from functools import lru_cache
 from io import BytesIO
 from urllib.parse import quote
 
@@ -23,13 +25,41 @@ import comfy.model_management
 import comfy.utils
 from comfy_api.latest import ComfyExtension, io
 
+def env_number(name, default, cast):
+    try:
+        return cast(os.getenv(name, default))
+    except ValueError:
+        logging.warning("Invalid %s; using %s", name, default)
+        return cast(default)
+
+
 API_URL = (os.getenv("IMAGE_STUDIO_API_URL") or "http://image-studio-backend:5000").rstrip("/")
-API_TOKEN = os.getenv("IMAGE_STUDIO_API_TOKEN", "")
 VOS_SUB = os.getenv("IMAGE_STUDIO_VOS_SUB") or os.getenv("COMFYUI_VOS_SUB", "")
-TIMEOUT_SECONDS = int(os.getenv("IMAGE_STUDIO_TIMEOUT_SECONDS", "900"))
-POLL_SECONDS = float(os.getenv("IMAGE_STUDIO_POLL_SECONDS", "2"))
-MODEL_KEYS = [item.strip() for item in os.getenv("IMAGE_STUDIO_MODEL_KEYS", "sd-turbo,sd15,sd2,sdxl").split(",") if item.strip()]
+TIMEOUT_SECONDS = env_number("IMAGE_STUDIO_TIMEOUT_SECONDS", "900", int)
+POLL_SECONDS = env_number("IMAGE_STUDIO_POLL_SECONDS", "2", float)
+MODEL_KEYS = [item.strip() for item in os.getenv("IMAGE_STUDIO_MODEL_KEYS", "sd-turbo").split(",") if item.strip()]
+SAMPLERS = ["euler_a", "euler", "heun", "dpm2", "dpm++2s_a", "dpm++2m", "dpm++2mv2", "ipndm", "ipndm_v",
+            "lcm", "ddim_trailing", "tcd", "res_multistep", "res_2s", "er_sde", "euler_cfg_pp",
+            "euler_a_cfg_pp", "euler_ge", "dpm++2m_sde", "dpm++2m_sde_bt", "lms"]
+SCHEDULERS = ["", "discrete", "karras", "exponential", "ays", "gits", "sgm_uniform", "simple", "smoothstep",
+              "kl_optimal", "lcm", "bong_tangent", "ltx2", "logit_normal", "flux2", "flux", "beta", "normal"]
 PRIORITIES = ["background", "interactive", "high"]
+
+
+@lru_cache(maxsize=1)
+def model_keys():
+    keys = MODEL_KEYS or ["sd-turbo"]
+    try:
+        request = urllib.request.Request(API_URL + "/api/v1/models", headers=api_headers())
+        with urllib.request.urlopen(request, timeout=2) as response:
+            models = json.loads(response.read())
+        ready = [model["key"] for model in models
+                 if isinstance(model, dict) and model.get("key") and model.get("status") == "ready"]
+        if ready:
+            keys = ready
+    except (OSError, ValueError):
+        pass
+    return keys
 
 
 def header_value(text):
@@ -42,8 +72,6 @@ def header_value(text):
 
 def api_headers():
     result = {"Accept": "application/json"}
-    if API_TOKEN:
-        result["Authorization"] = f"Bearer {API_TOKEN}"
     if VOS_SUB:
         result["X-Vos-Sub"] = header_value(VOS_SUB)
     return result
@@ -75,12 +103,12 @@ def image_tensor(data):
 class ImageStudioGenerate(io.ComfyNode):
     @classmethod
     def define_schema(cls):
-        keys = MODEL_KEYS or ["sd-turbo"]
+        keys = model_keys()
         return io.Schema(
             node_id="ImageStudioGenerate",
             display_name="Image Studio Generate",
             category="image/Image Studio",
-            description="Generate images through the Image Studio app. Image Studio queues the job with V-Scheduler.",
+            description="Generate images through the Image Studio app. Requires Image Studio; jobs queue through V-Scheduler.",
             inputs=[
                 io.String.Input("prompt", multiline=True, dynamic_prompts=True),
                 io.Combo.Input("model_key", options=keys, default=keys[0]),
@@ -92,8 +120,9 @@ class ImageStudioGenerate(io.ComfyNode):
                 io.Int.Input("batch_count", default=1, min=1, max=4),
                 io.String.Input("negative_prompt", default="", multiline=True, advanced=True),
                 io.String.Input("model_variant", default="", advanced=True),
-                io.String.Input("sampler", default="euler_a", advanced=True),
-                io.String.Input("scheduler", default="", advanced=True),
+                io.Combo.Input("sampler", options=SAMPLERS, default="euler_a", advanced=True),
+                io.Combo.Input("scheduler", options=SCHEDULERS, default="", advanced=True,
+                               tooltip="Empty means the model default."),
                 io.Int.Input("clip_skip", default=-1, min=-1, max=24, advanced=True),
                 io.Boolean.Input("hires", default=False, advanced=True),
                 io.Float.Input("hires_scale", default=2.0, min=1.0, max=8.0, step=0.1, advanced=True),

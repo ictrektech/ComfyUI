@@ -45,7 +45,7 @@ class _Session:
     async def __aexit__(self, *args):
         return False
 
-    async def request(self, method, url, json=None, headers=None):
+    def request(self, method, url, json=None, headers=None):
         self.calls.append((method, url, headers))
         if method == "POST":
             return _Response(payload={"job_id": "job-1"})
@@ -53,11 +53,11 @@ class _Session:
             return self.poll_response
         return _Response(payload={"status": "succeeded", "progress": 1, "outputs": ["sub/result.png"]})
 
-    async def get(self, url, headers=None):
+    def get(self, url, headers=None):
         self.calls.append(("GET", url, headers))
         return _Response(body=_png_with_alpha())
 
-    async def delete(self, url, headers=None):
+    def delete(self, url, headers=None):
         self.calls.append(("DELETE", url, headers))
         return _Response()
 
@@ -91,6 +91,25 @@ def test_success_returns_three_channel_image_and_encodes_names(monkeypatch):
     assert post_headers["X-Vos-Sub"] == quote("用户@example.com", safe="")
     assert any("sub%2Fresult.png" in url for method, url, _ in calls if method == "GET")
     assert not any(method == "DELETE" for method, _, _ in calls)
+
+
+def test_timeout_cancels_job(monkeypatch):
+    sessions = []
+
+    def make_session(timeout):
+        session = _Session(timeout, poll_response=_Response(payload={"status": "running", "progress": 0.5, "outputs": []}))
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(nodes_image_studio.aiohttp, "ClientSession", make_session)
+    monkeypatch.setattr(nodes_image_studio, "POLL_SECONDS", 0)
+    monkeypatch.setattr(nodes_image_studio, "TIMEOUT_SECONDS", 0)
+    monkeypatch.setattr(nodes_image_studio, "VOS_SUB", "")
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(_execute())
+
+    assert any(method == "DELETE" for method, _, _ in sessions[0].calls)
 
 
 def test_poll_error_cancels_job(monkeypatch):
