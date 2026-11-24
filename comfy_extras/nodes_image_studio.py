@@ -68,6 +68,12 @@ def model_keys():
     return keys or FALLBACK_MODEL_KEYS
 
 
+def reference_supported(model):
+    runtime = model.get("runtime") or {}
+    capabilities = set(model.get("capabilities") or [])
+    return bool({"img2img", "edit"} & capabilities) or bool((runtime.get("parameters") or {}).get("reference_image"))
+
+
 def apply_model_defaults(payload, model):
     """Drop widget defaults the model family overrides, so Image Studio picks its own."""
     defaults = (model.get("runtime") or {}).get("defaults") or {}
@@ -101,12 +107,25 @@ def error_detail(text):
     return text
 
 
-async def api_request(session, method, path, payload=None):
-    async with session.request(method, API_URL + path, json=payload, headers=api_headers()) as response:
+async def api_request(session, method, path, payload=None, data=None):
+    async with session.request(method, API_URL + path, json=payload, data=data, headers=api_headers()) as response:
         text = await response.text()
         if response.status >= 400:
             raise RuntimeError(f"Image Studio {response.status}: {error_detail(text)}")
         return json.loads(text) if text else {}
+
+
+async def upload_reference(session, image):
+    pixels = image[:1].cpu().clamp(0.0, 1.0).mul(255).round().to(torch.uint8).numpy()[0, :, :, :3]
+    buffer = BytesIO()
+    Image.fromarray(np.ascontiguousarray(pixels), mode="RGB").save(buffer, format="PNG")
+    form = aiohttp.FormData()
+    form.add_field("file", buffer.getvalue(), filename="reference.png", content_type="image/png")
+    uploaded = await api_request(session, "POST", "/api/v1/inputs", data=form)
+    input_id = uploaded.get("input_id")
+    if not input_id:
+        raise RuntimeError("Image Studio did not return an input_id for the reference image")
+    return input_id
 
 
 def image_tensor(data):
@@ -126,6 +145,13 @@ class ImageStudioGenerate(io.ComfyNode):
                         "Unchanged size, steps, CFG and sampler follow the model family defaults.",
             inputs=[
                 io.String.Input("prompt", multiline=True, dynamic_prompts=True),
+                io.Image.Input("init_image", optional=True,
+                               tooltip="Reference image for img2img, resized to width and height. "
+                                       "Needs a model with img2img or edit support."),
+                io.Float.Input("strength", default=0.75, min=0.0, max=1.0, step=0.01, advanced=True,
+                               tooltip="How much the reference image changes. 0 keeps it, 1 ignores it."),
+                io.Float.Input("img_cfg_scale", default=0.0, min=0.0, max=30.0, step=0.1, advanced=True,
+                               tooltip="CFG against the reference image. 0 uses the model default."),
                 io.Combo.Input("model_key", options=keys, default=keys[0]),
                 io.Int.Input("width", default=512, min=256, max=2048, step=8),
                 io.Int.Input("height", default=512, min=256, max=2048, step=8),
@@ -157,8 +183,11 @@ class ImageStudioGenerate(io.ComfyNode):
     @classmethod
     async def execute(cls, prompt, model_key, width, height, steps, cfg_scale, seed, batch_count,
                       negative_prompt, model_variant, sampler, scheduler, clip_skip, hires, hires_scale,
-                      hires_steps, hires_denoising_strength, priority, extra_params):
+                      hires_steps, hires_denoising_strength, priority, extra_params,
+                      init_image=None, strength=0.75, img_cfg_scale=0.0):
         model = model_catalog().get(model_key) or {}
+        if init_image is not None and model and not reference_supported(model):
+            raise ValueError(f"Image Studio model {model_key} does not accept a reference image")
         if seed < 0:
             seed = random.randint(0, 0xFFFFFFFF)
         payload = {
@@ -193,6 +222,10 @@ class ImageStudioGenerate(io.ComfyNode):
 
         timeout = aiohttp.ClientTimeout(total=60, connect=10)
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            if init_image is not None:
+                payload["init_input_id"] = await upload_reference(session, init_image)
+                payload["strength"] = strength
+                payload["img_cfg_scale"] = img_cfg_scale
             job = await api_request(session, "POST", "/api/v1/generate", payload)
             job_id = job.get("job_id")
             if not job_id:

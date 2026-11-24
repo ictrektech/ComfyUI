@@ -4,6 +4,7 @@ from io import BytesIO
 from urllib.parse import quote
 
 import pytest
+import torch
 from PIL import Image
 
 from comfy_extras import nodes_image_studio
@@ -51,8 +52,10 @@ class _Session:
     async def __aexit__(self, *args):
         return False
 
-    def request(self, method, url, json=None, headers=None):
+    def request(self, method, url, json=None, data=None, headers=None):
         self.calls.append((method, url, headers))
+        if url.endswith("/api/v1/inputs"):
+            return _Response(payload={"input_id": "in_1"})
         if method == "POST":
             self.payloads.append(json)
             return _Response(payload=self.job_payload)
@@ -97,8 +100,8 @@ def _execute(**overrides):
     return nodes_image_studio.ImageStudioGenerate.execute(**kwargs)
 
 
-def _sd15():
-    return {"sd15": {"key": "sd15", "status": "ready", "capabilities": ["txt2img"],
+def _sd15(capabilities=("txt2img",)):
+    return {"sd15": {"key": "sd15", "status": "ready", "capabilities": list(capabilities),
                      "runtime": {"defaults": {"width": 512, "height": 512, "steps": 20, "cfg_scale": 7.0, "sampler": "euler_a"}}}}
 
 
@@ -135,6 +138,36 @@ def test_explicit_values_are_sent(monkeypatch):
     assert payload["steps"] == 30
     assert payload["cfg_scale"] == 7.5
     assert payload["sampler"] == "euler"
+
+
+def test_model_without_reference_rejects_init_image(monkeypatch):
+    sessions = _install(monkeypatch, catalog=_sd15())
+
+    with pytest.raises(ValueError, match="does not accept a reference image"):
+        asyncio.run(_execute(model_key="sd15", init_image=torch.zeros(1, 8, 8, 3)))
+
+    assert sessions == []
+
+
+def test_img2img_uploads_reference_and_sends_input_id(monkeypatch):
+    sessions = _install(monkeypatch, catalog=_sd15(("txt2img", "img2img")))
+
+    asyncio.run(_execute(model_key="sd15", init_image=torch.zeros(1, 8, 8, 3), strength=0.6))
+
+    calls = sessions[0].calls
+    assert calls[0][0] == "POST"
+    assert calls[0][1].endswith("/api/v1/inputs")
+    payload = sessions[0].payloads[0]
+    assert payload["init_input_id"] == "in_1"
+    assert payload["strength"] == 0.6
+
+
+def test_edit_model_accepts_reference(monkeypatch):
+    sessions = _install(monkeypatch, catalog=_sd15(("edit",)))
+
+    asyncio.run(_execute(model_key="sd15", init_image=torch.zeros(1, 8, 8, 4)))
+
+    assert sessions[0].payloads[0]["init_input_id"] == "in_1"
 
 
 def test_random_seed_is_resolved_and_reported(monkeypatch):
