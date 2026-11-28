@@ -163,10 +163,12 @@ def package(version: str, stage: Path) -> Path:
     compose = yaml.safe_load((stage / "docker-compose.yml").read_text())
     if not compose.get("networks", {}).get("vos_default", {}).get("external"):
         raise RuntimeError("missing external vos_default network")
-    expected_profiles = {key.removeprefix("COMFYUI_").removesuffix("_IMAGE").lower().replace("_", "-") for key in PROFILES}
+    expected_profiles = {"amd-cpu", "amd-cuda", "arm-cpu", "arm-cuda", "jetson-orin", "jetson-thor", "dgx-spark"}
     manifest = yaml.safe_load((stage / "manifest.yml").read_text())
     if manifest.get("require-profiles") is not True or {p["name"] for p in manifest["profiles"]} != expected_profiles:
         raise RuntimeError("mismatched manifest profiles")
+    if {profile for service in compose["services"].values() for profile in service.get("profiles", [])} != expected_profiles:
+        raise RuntimeError("mismatched compose profiles")
     for profile in manifest["profiles"]:
         for field in ("title", "description"):
             localized = profile.get(field)
