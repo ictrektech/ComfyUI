@@ -46,7 +46,7 @@ x-comfyui-gpu-env: &comfyui-gpu-env
 services:
   comfyui-amd:
     <<: *comfyui
-    profiles: [amd]
+    profiles: [amd-cuda]
     image: ${COMFYUI_AMD_IMAGE}
     runtime: nvidia
     environment:
@@ -54,14 +54,14 @@ services:
       COMFYUI_DEVICE: cuda
   comfyui-amd-without-cuda:
     <<: *comfyui
-    profiles: [amd-without-cuda]
+    profiles: [amd-cpu]
     image: ${COMFYUI_AMD_WITHOUT_CUDA_IMAGE}
     environment:
       <<: *comfyui-env
       COMFYUI_DEVICE: cpu
   comfyui-arm:
     <<: *comfyui
-    profiles: [arm]
+    profiles: [arm-cuda]
     image: ${COMFYUI_ARM_IMAGE}
     runtime: nvidia
     environment:
@@ -69,14 +69,14 @@ services:
       COMFYUI_DEVICE: cuda
   comfyui-arm-without-cuda:
     <<: *comfyui
-    profiles: [arm-without-cuda]
+    profiles: [arm-cpu]
     image: ${COMFYUI_ARM_WITHOUT_CUDA_IMAGE}
     environment:
       <<: *comfyui-env
       COMFYUI_DEVICE: cpu
   comfyui-l4t:
     <<: *comfyui
-    profiles: [l4t]
+    profiles: [jetson-orin]
     image: ${COMFYUI_L4T_IMAGE}
     runtime: nvidia
     environment:
@@ -84,7 +84,7 @@ services:
       COMFYUI_DEVICE: l4t
   comfyui-thor-spark:
     <<: *comfyui
-    profiles: [thor-spark]
+    profiles: [jetson-thor, dgx-spark]
     image: ${COMFYUI_THOR_SPARK_IMAGE}
     runtime: nvidia
     environment:

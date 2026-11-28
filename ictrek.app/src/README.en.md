@@ -1,5 +1,7 @@
 # ComfyUI `__APP_VERSION__`
 
+Keep app storage when upgrading and explicitly select the matching canonical Profile. `amd` → `amd-cuda`, `amd-without-cuda` → `amd-cpu`, `arm` → `arm-cuda`, `arm-without-cuda` → `arm-cpu`, `l4t` → `jetson-orin`, `thor-spark` → `jetson-thor`. On a device that reports DGX Spark, select `dgx-spark` for the old `thor-spark`. Provide the new `profiles` explicitly for API upgrades. Select the matching old Profile on rollback. Application APIs stay the same.
+
 A node-based editor for local image and video workflows on VOS. Select one profile for your hardware: AMD64 CPU or CUDA, ARM64 CPU or CUDA, Jetson Orin / L4T, or Thor / DGX Spark. CPU mode is intended for lightweight workflows; large models generally need a GPU.
 
 1. Install V-Scheduler followed by ComfyUI. Select the same V-Scheduler shared model directory in both apps.

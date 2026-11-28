@@ -1,5 +1,7 @@
 # ComfyUI `__APP_VERSION__`
 
+从旧版升级时保留原存储，并显式选择原后端对应的标准 Profile。`amd` → `amd-cuda`、`amd-without-cuda` → `amd-cpu`、`arm` → `arm-cuda`、`arm-without-cuda` → `arm-cpu`、`l4t` → `jetson-orin`、`thor-spark` → `jetson-thor`。 旧 `thor-spark` 在已报告 Spark 设备标识的节点上可选 `dgx-spark`。 API 升级显式传入新 `profiles`，回退时选回旧版本对应选项。应用 API 保持一致。
+
 VOS 上的节点式图像与视频工作流编辑器。安装时按本机架构和加速器选择一个 profile：AMD64 CPU / CUDA、ARM64 CPU / CUDA、Jetson Orin / L4T 或 Thor / DGX Spark。CPU 模式适合轻量工作流；大型模型通常需要 GPU。
 
 1. 安装 V-Scheduler，再安装 ComfyUI；两个应用选择同一个 V-Scheduler 共享模型目录。
