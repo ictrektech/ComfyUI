@@ -167,8 +167,6 @@ def package(version: str, stage: Path) -> Path:
     manifest = yaml.safe_load((stage / "manifest.yml").read_text())
     if manifest.get("require-profiles") is not True or {p["name"] for p in manifest["profiles"]} != expected_profiles:
         raise RuntimeError("mismatched manifest profiles")
-    if {profile for service in compose["services"].values() for profile in service.get("profiles", [])} != expected_profiles:
-        raise RuntimeError("mismatched compose profiles")
     for profile in manifest["profiles"]:
         for field in ("title", "description"):
             localized = profile.get(field)
@@ -179,11 +177,12 @@ def package(version: str, stage: Path) -> Path:
                 raise RuntimeError(f"{profile['name']} must provide a Chinese and English {field}")
         if set(profile.get("conflicts", [])) != expected_profiles - {profile["name"]}:
             raise RuntimeError("profile conflicts must enforce single selection")
-    if {tuple(service["profiles"]) for service in compose["services"].values()} != {(p,) for p in expected_profiles}:
+    selected_profiles = [profile for service in compose["services"].values() for profile in service["profiles"]]
+    if sorted(selected_profiles) != sorted(expected_profiles):
         raise RuntimeError("mismatched Compose profiles")
     for service in compose["services"].values():
-        expected_runtime = "nvidia" if not service["profiles"][0].endswith("-without-cuda") else None
-        if service.get("runtime") != expected_runtime:
+        expected_runtimes = {None if profile.endswith("-cpu") else "nvidia" for profile in service["profiles"]}
+        if expected_runtimes != {service.get("runtime")}:
             raise RuntimeError("wrong runtime for profile")
         if not re.match(r"^[\w.-]+\.[\w.-]+(?::\d+)?/[^\s]+$", service.get("image", "")):
             raise RuntimeError("invalid service image")
